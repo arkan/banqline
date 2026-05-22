@@ -92,10 +92,6 @@ pub struct Config {
     #[serde(rename = "callback_port", default = "default_callback_port")]
     pub callback_port: u16,
 
-    /// Directory where config, session, and data files are stored.
-    #[serde(rename = "data_dir", default = "default_data_dir")]
-    pub data_dir: String,
-
     /// Default bank name used when `--bank` is omitted.
     #[serde(rename = "default_bank", default)]
     pub default_bank: String,
@@ -127,20 +123,15 @@ fn default_callback_port() -> u16 {
     19876
 }
 
-fn default_data_dir() -> String {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".banqline")
-        .to_string_lossy()
-        .to_string()
-}
-
-fn default_config_path() -> PathBuf {
+fn default_app_dir() -> PathBuf {
     dirs::config_dir()
         .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
         .unwrap_or_default()
         .join("banqline")
-        .join("config.yaml")
+}
+
+fn default_config_path() -> PathBuf {
+    default_app_dir().join("config.yaml")
 }
 
 fn default_log_level() -> String {
@@ -158,7 +149,6 @@ pub fn default_config() -> Config {
         key_path: String::new(),
         redirect_url: default_redirect_url(),
         callback_port: default_callback_port(),
-        data_dir: default_data_dir(),
         default_bank: String::new(),
         log_level: default_log_level(),
         tag_rules: TagRules::default(),
@@ -219,40 +209,39 @@ impl Config {
         default_config_path()
     }
 
+    /// Returns Banqline's fixed application data directory.
+    pub fn app_dir(&self) -> PathBuf {
+        default_app_dir()
+    }
+
     /// Returns the expected path of the session JSON file inside the data
     /// directory.
     pub fn session_path(&self) -> PathBuf {
-        PathBuf::from(&self.data_dir).join("session.json")
+        self.app_dir().join("session.json")
     }
 
-    /// Resolves `key_path` to an absolute path, expanding `~/` if present.
+    /// Returns the expected path of the local SQLite database.
+    pub fn data_path(&self) -> PathBuf {
+        self.app_dir().join("data.db")
+    }
+
+    /// Resolves `key_path` to a file inside Banqline's fixed app directory.
     ///
-    /// Returns an error when `key_path` is empty or the absolute path
-    /// cannot be resolved.
+    /// Only the file name from `key_path` is used, so `private.key`,
+    /// `./private.key`, and `/old/location/private.key` all resolve to
+    /// `~/.config/banqline/private.key` on a typical Linux system.
+    /// Returns an error when `key_path` is empty or does not contain a file name.
     pub fn key_abs_path(&self) -> Result<PathBuf> {
         if self.key_path.is_empty() {
             anyhow::bail!("key_path is not set");
         }
 
-        let expanded = if let Some(rest) = self.key_path.strip_prefix("~/") {
-            let home = dirs::home_dir().context("resolve home dir")?;
-            home.join(rest)
-        } else {
-            PathBuf::from(&self.key_path)
-        };
+        let file_name = Path::new(&self.key_path)
+            .file_name()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("key_path must contain a file name"))?;
 
-        // std::path::absolute is stable since Rust 1.79.
-        // Falls back to manual resolution for older toolchains.
-        #[allow(deprecated)]
-        if expanded.is_absolute() {
-            Ok(expanded)
-        } else {
-            std::env::current_dir()
-                .context("resolve current dir")?
-                .join(&expanded)
-                .canonicalize()
-                .context("resolve absolute key path")
-        }
+        Ok(self.app_dir().join(file_name))
     }
 }
 
@@ -274,26 +263,36 @@ mod tests {
         assert!(cfg.key_path.is_empty());
         assert!(cfg.tag_rules.is_empty());
         assert!(cfg.alert_rules.is_empty());
-        assert!(cfg.data_dir.ends_with(".banqline"));
     }
 
     #[test]
     fn config_path_helper() {
-        let cfg = Config {
-            data_dir: "/home/user/.banqline".into(),
-            ..default_config()
-        };
+        let cfg = default_config();
+        let app_dir = dirs::config_dir()
+            .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+            .unwrap_or_default()
+            .join("banqline");
+
+        assert_eq!(cfg.config_path(), app_dir.join("config.yaml"));
+        assert_eq!(cfg.session_path(), app_dir.join("session.json"));
+    }
+
+    #[test]
+    fn load_ignores_legacy_data_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, "application_id: my-app\ndata_dir: /tmp/legacy\n").unwrap();
+
+        let cfg = Config::load(&path).unwrap();
+
+        assert_eq!(cfg.application_id, "my-app");
         assert_eq!(
-            cfg.config_path(),
+            cfg.session_path(),
             dirs::config_dir()
                 .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
                 .unwrap_or_default()
                 .join("banqline")
-                .join("config.yaml")
-        );
-        assert_eq!(
-            cfg.session_path(),
-            PathBuf::from("/home/user/.banqline/session.json")
+                .join("session.json")
         );
     }
 
@@ -304,14 +303,33 @@ mod tests {
     }
 
     #[test]
-    fn key_abs_path_expands_tilde() {
-        let home = dirs::home_dir().unwrap();
+    fn key_abs_path_resolves_relative_to_app_config_dir() {
+        let app_dir = dirs::config_dir()
+            .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+            .unwrap_or_default()
+            .join("banqline");
         let cfg = Config {
-            key_path: "~/my-key.pem".into(),
+            key_path: "my-key.pem".into(),
             ..default_config()
         };
         let resolved = cfg.key_abs_path().unwrap();
-        assert_eq!(resolved, home.join("my-key.pem"));
+        assert_eq!(resolved, app_dir.join("my-key.pem"));
+    }
+
+    #[test]
+    fn key_abs_path_uses_file_name_inside_app_config_dir() {
+        let app_dir = dirs::config_dir()
+            .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+            .unwrap_or_default()
+            .join("banqline");
+        let cfg = Config {
+            key_path: "/tmp/other/place/my-key.pem".into(),
+            ..default_config()
+        };
+
+        let resolved = cfg.key_abs_path().unwrap();
+
+        assert_eq!(resolved, app_dir.join("my-key.pem"));
     }
 
     #[test]
@@ -391,19 +409,6 @@ mod tests {
         let back: Config = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(back.tag_rules.0.len(), 1);
         assert_eq!(back.tag_rules.0[0].category, "food");
-    }
-
-    #[test]
-    fn key_abs_path_resolves_absolute() {
-        // Use an absolute path that exists.
-        let cfg = Config {
-            key_path: std::env::current_dir()
-                .unwrap()
-                .to_string_lossy()
-                .to_string(),
-            ..default_config()
-        };
-        let resolved = cfg.key_abs_path().unwrap();
-        assert!(resolved.is_absolute());
+        assert!(!yaml.contains("data_dir"));
     }
 }

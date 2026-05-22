@@ -341,7 +341,7 @@ async fn resolve_alias(db: Option<&store::SqliteStore>, account_flag: &str) -> S
 }
 
 fn open_store(cfg: &config::Config) -> Result<store::SqliteStore> {
-    let db_path = PathBuf::from(&cfg.data_dir).join("data.db");
+    let db_path = cfg.data_path();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("create dir {}", parent.display()))?;

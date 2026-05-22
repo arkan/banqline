@@ -70,12 +70,14 @@ Minimal example:
 
 ```yaml
 application_id: "your-enable-banking-application-id"
-key_path: "~/.banqline/private.key"
+key_path: "private.key"
 redirect_url: "http://localhost:19876/callback"
 callback_port: 19876
 default_bank: "YOUR_BANK_NAME"
 log_level: "info"
 ```
+
+`key_path` is resolved inside `~/.config/banqline`: `private.key`, `./private.key`, or `/some/old/path/private.key` all resolve to `~/.config/banqline/private.key`.
 
 You need an Enable Banking application and a PEM-encoded RSA private key configured in the Enable Banking console. Keep private keys outside Git.
 
@@ -117,11 +119,12 @@ Run `banqline <command> --help` for command-specific options.
 
 ## Local data and security
 
-Banqline stores its configuration at `~/.config/banqline/config.yaml` by default, and stores sensitive runtime data locally under `~/.banqline` unless `data_dir` is overridden. This may include:
+Banqline stores all local state under `~/.config/banqline` by default. This may include:
 
 - `~/.config/banqline/config.yaml` — application configuration;
-- `~/.banqline/session.json` — bank sessions/tokens;
-- local SQLite data/cache files;
+- `~/.config/banqline/session.json` — bank sessions/tokens;
+- `~/.config/banqline/data.db` — local SQLite data/cache;
+- the PEM private key referenced by `key_path`;
 - transaction tags and alert rules.
 
 Security expectations:

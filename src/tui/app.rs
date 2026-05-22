@@ -184,7 +184,7 @@ impl App {
     }
 
     async fn new(cfg: Config) -> Result<Self> {
-        let db_path = std::path::PathBuf::from(&cfg.data_dir).join("data.db");
+        let db_path = cfg.data_path();
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("create dir {}", parent.display()))?;
@@ -2083,18 +2083,14 @@ mod tests {
 
     #[tokio::test]
     async fn new_creates_data_dir_before_opening_database() {
-        let temp = tempfile::tempdir().unwrap();
-        let data_dir = temp.path().join("missing-data-dir");
-        let cfg = Config {
-            data_dir: data_dir.to_string_lossy().to_string(),
-            ..Default::default()
-        };
+        let cfg = Config::default();
+        let data_path = cfg.data_path();
 
         let app = App::new(cfg).await;
 
         if let Err(err) = &app {
             panic!("expected App::new to create data dir: {err:#}");
         }
-        assert!(data_dir.join("data.db").exists());
+        assert!(data_path.exists());
     }
 }
