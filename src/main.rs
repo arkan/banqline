@@ -12,13 +12,13 @@ mod store;
 mod tagger;
 mod tui;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Duration, Utc};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use rust_decimal::Decimal;
 use serde_json::json;
 use store::Store as _;
@@ -30,36 +30,205 @@ use store::Store as _;
 #[derive(Parser)]
 #[command(
     name = "banqline",
-    about = "CLI for personal banking via Enable Banking API"
+    about = "Terminal-first personal banking via Enable Banking API"
 )]
 struct Cli {
     #[arg(short = 'c', long = "config", help = "Path to config file")]
     config: Option<PathBuf>,
 
-    #[arg(long = "json", help = "Output in JSON format", default_value_t = false)]
-    json: bool,
+    #[arg(
+        long = "format",
+        value_enum,
+        default_value_t = OutputFormat::Table,
+        help = "Output format"
+    )]
+    format: OutputFormat,
 
     #[command(subcommand)]
     command: Commands,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum OutputFormat {
+    Table,
+    Json,
+    Csv,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     Version,
-    Banks(BanksArgs),
-    Auth(AuthArgs),
-    Accounts(AccountsArgs),
-    Balances(BalancesArgs),
-    Transactions(TransactionsArgs),
-    Forecast(ForecastArgs),
-    #[command(name = "summary")]
-    Summary(SummaryArgs),
-    #[command(name = "tag")]
-    Tag(TagArgs),
-    #[command(name = "alerts")]
-    Alerts(AlertsArgs),
+    /// Diagnose local configuration, sessions and storage.
+    Doctor,
+    /// Bank discovery and connections.
+    Bank(BankArgs),
+    /// Account listing and aliases.
+    Account(AccountArgs),
+    /// Balance inspection.
+    Balance(BalanceArgs),
+    /// Transaction workflows.
+    Tx(TxArgs),
+    /// Reports and forecasts.
+    Report(ReportArgs),
+    /// Alert rules and checks.
+    Alert(AlertsArgs),
+    /// Synchronize the local cache from bank APIs.
+    Sync(SyncArgs),
     /// Launch the interactive TUI dashboard.
     Tui,
+}
+
+#[derive(Args)]
+struct BankArgs {
+    #[command(subcommand)]
+    action: BankAction,
+}
+
+#[derive(Subcommand)]
+enum BankAction {
+    /// List supported banks for a country.
+    List(BanksArgs),
+    /// Connect a bank account through OAuth.
+    Connect(AuthArgs),
+    /// Show locally stored bank sessions.
+    Status,
+}
+
+#[derive(Args)]
+struct AccountArgs {
+    #[command(subcommand)]
+    action: AccountAction,
+}
+
+#[derive(Subcommand)]
+enum AccountAction {
+    /// List accounts from the local cache.
+    List(AccountsListArgs),
+    /// Manage account aliases.
+    Alias(AccountAliasArgs),
+}
+
+#[derive(Args)]
+struct AccountsListArgs {
+    #[arg(long)]
+    bank: Option<String>,
+}
+
+#[derive(Args)]
+struct SyncArgs {
+    #[command(subcommand)]
+    target: Option<SyncTarget>,
+}
+
+#[derive(Subcommand)]
+enum SyncTarget {
+    /// Synchronize accounts, balances and transactions.
+    All(SyncAllArgs),
+    /// Synchronize transactions.
+    Tx(SyncTxArgs),
+    /// Synchronize balances.
+    Balances(SyncBalancesArgs),
+    /// Synchronize accounts and their balances.
+    Accounts(SyncAccountsArgs),
+}
+
+#[derive(Args, Default)]
+struct SyncAllArgs {
+    #[arg(long)]
+    bank: Option<String>,
+    #[arg(long)]
+    account: Option<String>,
+    #[arg(long)]
+    from: Option<String>,
+    #[arg(long)]
+    to: Option<String>,
+}
+
+#[derive(Args)]
+struct SyncTxArgs {
+    #[arg(long)]
+    bank: Option<String>,
+    #[arg(long)]
+    account: Option<String>,
+    #[arg(long)]
+    from: Option<String>,
+    #[arg(long)]
+    to: Option<String>,
+}
+
+#[derive(Args)]
+struct SyncBalancesArgs {
+    #[arg(long)]
+    bank: Option<String>,
+    #[arg(long)]
+    account: Option<String>,
+}
+
+#[derive(Args)]
+struct SyncAccountsArgs {
+    #[arg(long)]
+    bank: Option<String>,
+}
+
+#[derive(Args)]
+struct AccountAliasArgs {
+    #[command(subcommand)]
+    action: AccountAliasAction,
+}
+
+#[derive(Subcommand)]
+enum AccountAliasAction {
+    Set {
+        #[arg(long)]
+        alias: String,
+        #[arg(long)]
+        uid: String,
+    },
+    Get {
+        alias: String,
+    },
+    Remove {
+        alias: String,
+    },
+    List,
+}
+
+#[derive(Args)]
+struct BalanceArgs {
+    #[command(subcommand)]
+    action: BalanceAction,
+}
+
+#[derive(Subcommand)]
+enum BalanceAction {
+    /// List balances for an account.
+    List(BalancesArgs),
+}
+
+#[derive(Args)]
+struct TxArgs {
+    #[command(subcommand)]
+    action: TxAction,
+}
+
+#[derive(Subcommand)]
+enum TxAction {
+    /// List transactions.
+    List(TransactionsArgs),
+    /// Manage transaction tags.
+    Tag(TagArgs),
+}
+
+#[derive(Args)]
+struct ReportArgs {
+    #[command(subcommand)]
+    action: ReportAction,
+}
+
+#[derive(Subcommand)]
+enum ReportAction {
+    Summary(SummaryArgs),
+    Forecast(ForecastArgs),
 }
 
 #[derive(Args)]
@@ -68,6 +237,26 @@ struct BanksArgs {
     country: String,
     #[arg(long)]
     filter: Option<String>,
+}
+
+impl From<AccountsListArgs> for AccountsArgs {
+    fn from(value: AccountsListArgs) -> Self {
+        AccountsArgs {
+            bank: value.bank,
+            alias: None,
+        }
+    }
+}
+
+impl From<AccountAliasAction> for AliasCommand {
+    fn from(value: AccountAliasAction) -> Self {
+        match value {
+            AccountAliasAction::Set { alias, uid } => AliasCommand::Set { alias, uid },
+            AccountAliasAction::Get { alias } => AliasCommand::Get { alias },
+            AccountAliasAction::Remove { alias } => AliasCommand::Remove { alias },
+            AccountAliasAction::List => AliasCommand::List,
+        }
+    }
 }
 
 #[derive(Args)]
@@ -82,8 +271,6 @@ struct AuthArgs {
 struct AccountsArgs {
     #[arg(long)]
     bank: Option<String>,
-    #[arg(long)]
-    refresh: bool,
     #[command(subcommand)]
     alias: Option<AliasCommand>,
 }
@@ -111,8 +298,6 @@ struct BalancesArgs {
     bank: Option<String>,
     #[arg(long)]
     account: Option<String>,
-    #[arg(long)]
-    refresh: bool,
 }
 
 #[derive(Args)]
@@ -127,8 +312,6 @@ struct TransactionsArgs {
     to: Option<String>,
     #[arg(long, default_value = "50")]
     limit: i32,
-    #[arg(long)]
-    refresh: bool,
     #[arg(long)]
     category: Option<String>,
     #[arg(long)]
@@ -145,8 +328,6 @@ struct ForecastArgs {
     all: bool,
     #[arg(long)]
     detail: bool,
-    #[arg(long)]
-    refresh: bool,
 }
 
 #[derive(Args)]
@@ -221,8 +402,6 @@ struct AlertsAddArgs {
 #[derive(Args)]
 struct AlertsCheckArgs {
     #[arg(long)]
-    refresh: bool,
-    #[arg(long)]
     json: bool,
 }
 
@@ -257,7 +436,7 @@ fn new_client(cfg: &config::Config) -> Result<client::Client> {
 
 fn load_sessions(cfg: &config::Config) -> Result<session::Store> {
     session::load(&cfg.session_path())?
-        .ok_or_else(|| anyhow::anyhow!("no sessions found; run auth first"))
+        .ok_or_else(|| anyhow::anyhow!("no sessions found; run bank connect first"))
 }
 
 fn resolve_bank<'a>(
@@ -266,11 +445,11 @@ fn resolve_bank<'a>(
 ) -> Result<(&'a str, &'a session::StoredSession)> {
     match bank_flag {
         Some(name) => {
-            let (key, sess) = store
-                .get_key_value(name)
-                .ok_or_else(|| anyhow::anyhow!("no session for bank '{name}'; run auth first"))?;
+            let (key, sess) = store.get_key_value(name).ok_or_else(|| {
+                anyhow::anyhow!("no session for bank '{name}'; run bank connect first")
+            })?;
             if !sess.is_valid() {
-                anyhow::bail!("session for '{name}' has expired; re-run auth");
+                anyhow::bail!("session for '{name}' has expired; run bank connect again");
             }
             Ok((key.as_str(), sess))
         }
@@ -278,7 +457,7 @@ fn resolve_bank<'a>(
             if store.len() == 1 {
                 let (key, sess) = store.iter().next().unwrap();
                 if !sess.is_valid() {
-                    anyhow::bail!("session for '{}' has expired; re-run auth", key);
+                    anyhow::bail!("session for '{}' has expired; run bank connect again", key);
                 }
                 Ok((key.as_str(), sess))
             } else {
@@ -436,8 +615,11 @@ async fn build_alias_map(db: &store::SqliteStore) -> HashMap<String, String> {
     aliases
 }
 
-fn printer(json: bool) -> output::Printer {
-    output::Printer { json }
+fn printer(format: OutputFormat) -> output::Printer {
+    output::Printer {
+        json: format == OutputFormat::Json,
+        csv: format == OutputFormat::Csv,
+    }
 }
 
 async fn fetch_all_transactions(
@@ -536,9 +718,174 @@ fn format_amount(amount: &str) -> String {
 // Command implementations
 // ---------------------------------------------------------------------------
 
-fn cmd_version() -> Result<()> {
-    println!("banqline {}", env!("CARGO_PKG_VERSION"));
+fn cmd_version(json_output: bool) -> Result<()> {
+    if json_output {
+        serde_json::to_writer_pretty(
+            std::io::stdout(),
+            &json!({
+                "name": "banqline",
+                "version": env!("CARGO_PKG_VERSION"),
+            }),
+        )
+        .context("write json")?;
+        println!();
+    } else {
+        println!("banqline {}", env!("CARGO_PKG_VERSION"));
+    }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct DoctorCheck {
+    name: &'static str,
+    status: &'static str,
+    detail: String,
+    suggestion: Option<String>,
+}
+
+fn check_status(ok: bool) -> &'static str {
+    if ok { "OK" } else { "WARN" }
+}
+
+fn cmd_doctor(config_path: Option<&Path>, pr: &output::Printer) -> Result<()> {
+    let default_cfg = config::default_config();
+    let path = config_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| default_cfg.config_path());
+    let cfg = if path.exists() {
+        config::Config::load(&path).unwrap_or_else(|_| default_cfg.clone())
+    } else {
+        default_cfg.clone()
+    };
+
+    let mut checks = Vec::new();
+    checks.push(DoctorCheck {
+        name: "config",
+        status: check_status(path.exists()),
+        detail: path.display().to_string(),
+        suggestion: (!path.exists())
+            .then(|| "Run `banqline setup` or create the config file".to_string()),
+    });
+
+    checks.push(DoctorCheck {
+        name: "application_id",
+        status: check_status(!cfg.application_id.is_empty()),
+        detail: if cfg.application_id.is_empty() {
+            "not configured".into()
+        } else {
+            "configured".into()
+        },
+        suggestion: cfg
+            .application_id
+            .is_empty()
+            .then(|| "Set application_id in config.yaml".to_string()),
+    });
+
+    let key_detail = cfg
+        .key_abs_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|e| e.to_string());
+    let key_ok = cfg.key_abs_path().map(|p| p.is_file()).unwrap_or(false);
+    checks.push(DoctorCheck {
+        name: "private_key",
+        status: check_status(key_ok),
+        detail: key_detail,
+        suggestion: (!key_ok)
+            .then(|| "Put your PEM private key in ~/.config/banqline and set key_path".to_string()),
+    });
+
+    let port_ok = std::net::TcpListener::bind(("127.0.0.1", cfg.callback_port)).is_ok();
+    checks.push(DoctorCheck {
+        name: "callback_port",
+        status: check_status(port_ok),
+        detail: cfg.callback_port.to_string(),
+        suggestion: (!port_ok).then(|| "Choose a free callback_port in config.yaml".to_string()),
+    });
+
+    let session_path = cfg.session_path();
+    let session_detail = match session::load(&session_path) {
+        Ok(Some(store)) if store.is_empty() => "no sessions".to_string(),
+        Ok(Some(store)) => format!("{} session(s)", store.len()),
+        Ok(None) => "missing".to_string(),
+        Err(e) => e.to_string(),
+    };
+    let session_ok = matches!(session::load(&session_path), Ok(Some(store)) if !store.is_empty());
+    checks.push(DoctorCheck {
+        name: "session",
+        status: check_status(session_ok),
+        detail: session_detail,
+        suggestion: (!session_ok)
+            .then(|| "Run `banqline bank connect --country FR --bank <name>`".to_string()),
+    });
+
+    let db_path = cfg.data_path();
+    let db_ok = db_path.parent().map(|p| p.exists()).unwrap_or(false)
+        || std::fs::create_dir_all(cfg.app_dir()).is_ok();
+    checks.push(DoctorCheck {
+        name: "database_dir",
+        status: check_status(db_ok),
+        detail: db_path.display().to_string(),
+        suggestion: (!db_ok).then(|| "Check permissions under ~/.config/banqline".to_string()),
+    });
+
+    let ok = checks.iter().all(|check| check.status == "OK");
+    if pr.json {
+        pr.print_json(&json!({ "ok": ok, "checks": checks }))?;
+    } else {
+        let rows = checks
+            .iter()
+            .map(|check| {
+                vec![
+                    check.name.to_string(),
+                    check.status.to_string(),
+                    check.detail.clone(),
+                    check.suggestion.clone().unwrap_or_default(),
+                ]
+            })
+            .collect();
+        pr.print_table(
+            vec![
+                "CHECK".into(),
+                "STATUS".into(),
+                "DETAIL".into(),
+                "NEXT STEP".into(),
+            ],
+            rows,
+        )?;
+    }
+    Ok(())
+}
+
+async fn cmd_bank_status(cfg: &config::Config, pr: &output::Printer) -> Result<()> {
+    let sessions = session::load(&cfg.session_path())?.unwrap_or_default();
+    if pr.json {
+        pr.print_json(&sessions)?;
+        return Ok(());
+    }
+    if sessions.is_empty() {
+        println!("No bank connected. Run: banqline bank connect --country FR --bank <name>");
+        return Ok(());
+    }
+    let rows = sessions
+        .iter()
+        .map(|(bank, sess)| {
+            vec![
+                bank.clone(),
+                sess.accounts.len().to_string(),
+                sess.valid_until.to_rfc3339(),
+                if sess.is_valid() { "OK" } else { "EXPIRED" }.to_string(),
+            ]
+        })
+        .collect();
+    pr.print_table(
+        vec![
+            "BANK".into(),
+            "ACCOUNTS".into(),
+            "VALID_UNTIL".into(),
+            "STATUS".into(),
+        ],
+        rows,
+    )
 }
 
 async fn cmd_banks(args: &BanksArgs, cfg: &config::Config, pr: &output::Printer) -> Result<()> {
@@ -652,6 +999,415 @@ async fn poll_session(client: &client::Client, session_id: &str) -> Result<clien
     anyhow::bail!("session did not return accounts after polling")
 }
 
+#[derive(serde::Serialize)]
+struct SyncReport {
+    account: String,
+    bank: String,
+    tx_before: usize,
+    tx_added: usize,
+    balances: usize,
+    status: String,
+    synced_at: DateTime<Utc>,
+}
+
+fn sync_bank_names<'a>(
+    sessions: &'a session::Store,
+    bank: Option<&'a str>,
+) -> Result<Vec<(&'a str, &'a session::StoredSession)>> {
+    if let Some(name) = bank {
+        let (_, sess) = resolve_bank(sessions, Some(name))?;
+        return Ok(vec![(name, sess)]);
+    }
+
+    let mut selected = Vec::new();
+    for (name, sess) in sessions {
+        if sess.is_valid() {
+            selected.push((name.as_str(), sess));
+        }
+    }
+    if selected.is_empty() {
+        anyhow::bail!("no valid sessions; run bank connect first");
+    }
+    Ok(selected)
+}
+
+async fn sync_account_uids(
+    db: &store::SqliteStore,
+    sess: &session::StoredSession,
+    account: Option<&str>,
+) -> Result<Vec<String>> {
+    match account {
+        Some(flag) => {
+            let uid = resolve_alias(Some(db), flag).await;
+            if !sess.accounts.iter().any(|acct| acct.uid == uid) {
+                anyhow::bail!("account '{flag}' not found in selected bank session");
+            }
+            Ok(vec![uid])
+        }
+        None => Ok(sess.accounts.iter().map(|acct| acct.uid.clone()).collect()),
+    }
+}
+
+async fn sync_accounts_for_bank(
+    client: &client::Client,
+    db: &store::SqliteStore,
+    bank_name: &str,
+    sess: &session::StoredSession,
+) -> Result<Vec<SyncReport>> {
+    let mut reports = Vec::new();
+
+    for acct in &sess.accounts {
+        let details = client
+            .get_account_details(&acct.uid)
+            .await
+            .context("get account details")?;
+        let rec = to_account_record(bank_name, &details);
+        db.upsert_account(bank_name, &rec).await?;
+
+        let api_balances = client
+            .get_balances(&acct.uid)
+            .await
+            .context("get balances")?;
+        let balance_recs = to_balance_records(api_balances);
+        let balances = balance_recs.len();
+        db.replace_balances(&acct.uid, &balance_recs, Utc::now())
+            .await?;
+
+        let tx_before = cached_transaction_count(db, &acct.uid).await?;
+        reports.push(SyncReport {
+            account: account_label(db, bank_name, acct).await,
+            bank: bank_name.into(),
+            tx_before,
+            tx_added: 0,
+            balances,
+            status: "OK".into(),
+            synced_at: Utc::now(),
+        });
+    }
+
+    Ok(reports)
+}
+
+async fn sync_balances_for_bank(
+    client: &client::Client,
+    db: &store::SqliteStore,
+    bank_name: &str,
+    sess: &session::StoredSession,
+    account: Option<&str>,
+) -> Result<Vec<SyncReport>> {
+    let account_uids = sync_account_uids(db, sess, account).await?;
+    let mut reports = Vec::new();
+
+    for uid in &account_uids {
+        let acct = session_account_by_uid(sess, uid)?;
+        let api_balances = client.get_balances(uid).await.context("get balances")?;
+        let recs = to_balance_records(api_balances);
+        let balances = recs.len();
+        db.replace_balances(uid, &recs, Utc::now()).await?;
+        let tx_before = cached_transaction_count(db, uid).await?;
+        reports.push(SyncReport {
+            account: account_label(db, bank_name, acct).await,
+            bank: bank_name.into(),
+            tx_before,
+            tx_added: 0,
+            balances,
+            status: "OK".into(),
+            synced_at: Utc::now(),
+        });
+    }
+
+    Ok(reports)
+}
+
+async fn sync_transactions_for_bank(
+    client: &client::Client,
+    db: &store::SqliteStore,
+    bank_name: &str,
+    sess: &session::StoredSession,
+    account: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<SyncReport>> {
+    let account_uids = sync_account_uids(db, sess, account).await?;
+    let mut reports = Vec::new();
+
+    for uid in &account_uids {
+        let acct = session_account_by_uid(sess, uid)?;
+        let before = cached_transactions(db, uid).await?;
+        let before_ids: HashSet<String> = before.iter().map(transaction_record_id).collect();
+        let api_txns = fetch_all_transactions(client, uid, from, to, None).await?;
+        let recs = to_transaction_records(uid, api_txns);
+        let tx_added = recs
+            .iter()
+            .filter(|t| !before_ids.contains(&transaction_record_id(t)))
+            .count();
+        db.upsert_transactions(uid, &recs).await?;
+        db.set_last_synced(uid, "transactions", Utc::now()).await?;
+        reports.push(SyncReport {
+            account: account_label(db, bank_name, acct).await,
+            bank: bank_name.into(),
+            tx_before: before.len(),
+            tx_added,
+            balances: 0,
+            status: "OK".into(),
+            synced_at: Utc::now(),
+        });
+    }
+
+    Ok(reports)
+}
+
+async fn sync_all_for_bank(
+    client: &client::Client,
+    db: &store::SqliteStore,
+    bank_name: &str,
+    sess: &session::StoredSession,
+    account: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<SyncReport>> {
+    let account_uids = sync_account_uids(db, sess, account).await?;
+    let mut reports = Vec::new();
+
+    for uid in &account_uids {
+        let acct = session_account_by_uid(sess, uid)?;
+        let details = client
+            .get_account_details(uid)
+            .await
+            .context("get account details")?;
+        let rec = to_account_record(bank_name, &details);
+        db.upsert_account(bank_name, &rec).await?;
+
+        let api_balances = client.get_balances(uid).await.context("get balances")?;
+        let balance_recs = to_balance_records(api_balances);
+        let balances = balance_recs.len();
+        db.replace_balances(uid, &balance_recs, Utc::now()).await?;
+
+        let before = cached_transactions(db, uid).await?;
+        let before_ids: HashSet<String> = before.iter().map(transaction_record_id).collect();
+        let api_txns = fetch_all_transactions(client, uid, from, to, None).await?;
+        let recs = to_transaction_records(uid, api_txns);
+        let tx_added = recs
+            .iter()
+            .filter(|t| !before_ids.contains(&transaction_record_id(t)))
+            .count();
+        db.upsert_transactions(uid, &recs).await?;
+        db.set_last_synced(uid, "transactions", Utc::now()).await?;
+
+        reports.push(SyncReport {
+            account: account_label(db, bank_name, acct).await,
+            bank: bank_name.into(),
+            tx_before: before.len(),
+            tx_added,
+            balances,
+            status: "OK".into(),
+            synced_at: Utc::now(),
+        });
+    }
+
+    Ok(reports)
+}
+
+fn session_account_by_uid<'a>(
+    sess: &'a session::StoredSession,
+    uid: &str,
+) -> Result<&'a session::StoredAccount> {
+    sess.accounts
+        .iter()
+        .find(|acct| acct.uid == uid)
+        .ok_or_else(|| anyhow::anyhow!("account '{uid}' not found in selected bank session"))
+}
+
+async fn cached_transactions(
+    db: &store::SqliteStore,
+    account_uid: &str,
+) -> Result<Vec<store::TransactionRecord>> {
+    db.get_transactions(account_uid, &store::QueryOpts::default())
+        .await
+}
+
+async fn cached_transaction_count(db: &store::SqliteStore, account_uid: &str) -> Result<usize> {
+    Ok(cached_transactions(db, account_uid).await?.len())
+}
+
+fn transaction_record_id(t: &store::TransactionRecord) -> String {
+    if t.transaction_id.is_empty() {
+        t.entry_reference.clone()
+    } else {
+        t.transaction_id.clone()
+    }
+}
+
+async fn account_label(
+    db: &store::SqliteStore,
+    bank_name: &str,
+    acct: &session::StoredAccount,
+) -> String {
+    if let Ok(accounts) = db.get_accounts(bank_name).await
+        && let Some(rec) = accounts.iter().find(|a| a.uid == acct.uid)
+    {
+        if !rec.alias.is_empty() {
+            return rec.alias.clone();
+        }
+        if !rec.name.is_empty() {
+            return rec.name.clone();
+        }
+        if !rec.iban.is_empty() {
+            return output::iban_suffix(&rec.iban, 5);
+        }
+    }
+    if !acct.name.is_empty() {
+        return acct.name.clone();
+    }
+    if !acct.iban.is_empty() {
+        return output::iban_suffix(&acct.iban, 5);
+    }
+    acct.uid.clone()
+}
+
+fn print_sync_reports(pr: &output::Printer, reports: &[SyncReport]) -> Result<()> {
+    if pr.json {
+        let mut meta = HashMap::new();
+        meta.insert("count".into(), serde_json::json!(reports.len()));
+        return pr.print_json_with_meta(&reports, meta);
+    }
+
+    let (headers, rows) = sync_report_table(reports);
+    pr.print_table(headers, rows)
+}
+
+fn sync_report_table(reports: &[SyncReport]) -> (Vec<String>, Vec<Vec<String>>) {
+    let headers = vec![
+        "ACCOUNT".into(),
+        "BANK".into(),
+        "TX BEFORE".into(),
+        "TX ADDED".into(),
+        "BALANCES".into(),
+        "STATUS".into(),
+    ];
+    let rows = reports
+        .iter()
+        .map(|r| {
+            vec![
+                r.account.clone(),
+                r.bank.clone(),
+                r.tx_before.to_string(),
+                r.tx_added.to_string(),
+                r.balances.to_string(),
+                r.status.clone(),
+            ]
+        })
+        .collect();
+    (headers, rows)
+}
+
+#[cfg(test)]
+mod sync_report_tests {
+    use super::*;
+
+    #[test]
+    fn sync_report_table_is_account_centred() {
+        let reports = vec![SyncReport {
+            account: "main".into(),
+            bank: "BNP Paribas".into(),
+            tx_before: 321,
+            tx_added: 0,
+            balances: 2,
+            status: "OK".into(),
+            synced_at: Utc::now(),
+        }];
+
+        let (headers, rows) = sync_report_table(&reports);
+
+        assert_eq!(
+            headers,
+            vec![
+                "ACCOUNT",
+                "BANK",
+                "TX BEFORE",
+                "TX ADDED",
+                "BALANCES",
+                "STATUS"
+            ]
+        );
+        assert_eq!(
+            rows,
+            vec![vec!["main", "BNP Paribas", "321", "0", "2", "OK"]]
+        );
+    }
+}
+
+async fn cmd_sync(args: &SyncArgs, cfg: &config::Config, pr: &output::Printer) -> Result<()> {
+    let sessions = load_sessions(cfg)?;
+    let db = open_store(cfg)?;
+    let api_client = new_client(cfg)?;
+    let mut reports = Vec::new();
+
+    match &args.target {
+        None | Some(SyncTarget::All(_)) => {
+            let defaults;
+            let all_args = match &args.target {
+                Some(SyncTarget::All(a)) => a,
+                _ => {
+                    defaults = SyncAllArgs::default();
+                    &defaults
+                }
+            };
+            for (bank_name, sess) in sync_bank_names(&sessions, all_args.bank.as_deref())? {
+                reports.extend(
+                    sync_all_for_bank(
+                        &api_client,
+                        &db,
+                        bank_name,
+                        sess,
+                        all_args.account.as_deref(),
+                        all_args.from.as_deref(),
+                        all_args.to.as_deref(),
+                    )
+                    .await?,
+                );
+            }
+        }
+        Some(SyncTarget::Tx(tx_args)) => {
+            for (bank_name, sess) in sync_bank_names(&sessions, tx_args.bank.as_deref())? {
+                reports.extend(
+                    sync_transactions_for_bank(
+                        &api_client,
+                        &db,
+                        bank_name,
+                        sess,
+                        tx_args.account.as_deref(),
+                        tx_args.from.as_deref(),
+                        tx_args.to.as_deref(),
+                    )
+                    .await?,
+                );
+            }
+        }
+        Some(SyncTarget::Balances(balance_args)) => {
+            for (bank_name, sess) in sync_bank_names(&sessions, balance_args.bank.as_deref())? {
+                reports.extend(
+                    sync_balances_for_bank(
+                        &api_client,
+                        &db,
+                        bank_name,
+                        sess,
+                        balance_args.account.as_deref(),
+                    )
+                    .await?,
+                );
+            }
+        }
+        Some(SyncTarget::Accounts(account_args)) => {
+            for (bank_name, sess) in sync_bank_names(&sessions, account_args.bank.as_deref())? {
+                reports.extend(sync_accounts_for_bank(&api_client, &db, bank_name, sess).await?);
+            }
+        }
+    }
+
+    print_sync_reports(pr, &reports)
+}
+
 async fn cmd_accounts(
     args: &AccountsArgs,
     cfg: &config::Config,
@@ -662,29 +1418,9 @@ async fn cmd_accounts(
     }
 
     let sessions = load_sessions(cfg)?;
-    let (bank_name, sess) = resolve_bank(&sessions, args.bank.as_deref())?;
+    let (bank_name, _sess) = resolve_bank(&sessions, args.bank.as_deref())?;
     let db = open_store(cfg)?;
-    let api_client = new_client(cfg)?;
     let aliases = build_alias_map(&db).await;
-
-    if args.refresh {
-        for acct in &sess.accounts {
-            let details = api_client
-                .get_account_details(&acct.uid)
-                .await
-                .context("get account details")?;
-            let rec = to_account_record(bank_name, &details);
-            db.upsert_account(bank_name, &rec).await?;
-
-            let balances = api_client
-                .get_balances(&acct.uid)
-                .await
-                .context("get balances")?;
-            let balance_recs = to_balance_records(balances);
-            db.replace_balances(&acct.uid, &balance_recs, Utc::now())
-                .await?;
-        }
-    }
 
     let stored = db.get_accounts(bank_name).await?;
     if stored.is_empty() {
@@ -823,18 +1559,8 @@ async fn cmd_balances(
     let sessions = load_sessions(cfg)?;
     let (bank_name, sess) = resolve_bank(&sessions, args.bank.as_deref())?;
     let db = open_store(cfg)?;
-    let api_client = new_client(cfg)?;
 
     let account = resolve_account(sess, Some(&db), args.account.as_deref()).await?;
-
-    if args.refresh {
-        let balances = api_client
-            .get_balances(&account.uid)
-            .await
-            .context("get balances")?;
-        let recs = to_balance_records(balances);
-        db.replace_balances(&account.uid, &recs, Utc::now()).await?;
-    }
 
     let (bals, fetched_at) = db.get_balances(&account.uid).await.unwrap_or_default();
 
@@ -895,7 +1621,6 @@ async fn cmd_transactions(
     let sessions = load_sessions(cfg)?;
     let (bank_name, sess) = resolve_bank(&sessions, args.bank.as_deref())?;
     let db = open_store(cfg)?;
-    let api_client = new_client(cfg)?;
 
     let account_uids: Vec<String> = match args.account.as_deref() {
         Some(flag) => {
@@ -909,20 +1634,6 @@ async fn cmd_transactions(
     let mut oldest_synced: Option<DateTime<Utc>> = None;
 
     for uid in &account_uids {
-        if args.refresh {
-            let api_txns = fetch_all_transactions(
-                &api_client,
-                uid,
-                args.from.as_deref(),
-                args.to.as_deref(),
-                None,
-            )
-            .await?;
-            let recs = to_transaction_records(uid, api_txns);
-            db.upsert_transactions(uid, &recs).await?;
-            db.set_last_synced(uid, "transactions", Utc::now()).await?;
-        }
-
         let synced = db
             .get_last_synced(uid, "transactions")
             .await
@@ -1038,27 +1749,24 @@ async fn cmd_forecast(
     cfg: &config::Config,
     pr: &output::Printer,
 ) -> Result<()> {
-    let api_client = new_client(cfg)?;
-
     if args.all {
-        return forecast_all_banks(args, cfg, &api_client, pr).await;
+        return forecast_all_banks(args, cfg, pr).await;
     }
 
     if args.bank.is_some() || !args.all {
-        return forecast_single_bank(args, cfg, &api_client, pr).await;
+        return forecast_single_bank(args, cfg, pr).await;
     }
 
     let sessions = load_sessions(cfg)?;
     if sessions.len() == 1 {
-        return forecast_single_bank(args, cfg, &api_client, pr).await;
+        return forecast_single_bank(args, cfg, pr).await;
     }
-    forecast_all_banks(args, cfg, &api_client, pr).await
+    forecast_all_banks(args, cfg, pr).await
 }
 
 async fn forecast_single_bank(
     args: &ForecastArgs,
     cfg: &config::Config,
-    api_client: &client::Client,
     pr: &output::Printer,
 ) -> Result<()> {
     let sessions = load_sessions(cfg)?;
@@ -1083,9 +1791,7 @@ async fn forecast_single_bank(
             .find(|a| a.uid == *uid)
             .ok_or_else(|| anyhow::anyhow!("account {uid} not found in session"))?;
 
-        let fc =
-            compute_account_forecast(api_client, &db, uid, &account.iban, bank_name, args.refresh)
-                .await?;
+        let fc = compute_account_forecast(&db, uid, &account.iban, bank_name).await?;
 
         let synced = db
             .get_last_synced(uid, "transactions")
@@ -1115,7 +1821,6 @@ async fn forecast_single_bank(
 async fn forecast_all_banks(
     args: &ForecastArgs,
     cfg: &config::Config,
-    api_client: &client::Client,
     pr: &output::Printer,
 ) -> Result<()> {
     let sessions = load_sessions(cfg)?;
@@ -1131,15 +1836,7 @@ async fn forecast_all_banks(
         }
 
         for acct in &sess.accounts {
-            let fc = compute_account_forecast(
-                api_client,
-                &db,
-                &acct.uid,
-                &acct.iban,
-                bank_name,
-                args.refresh,
-            )
-            .await?;
+            let fc = compute_account_forecast(&db, &acct.uid, &acct.iban, bank_name).await?;
 
             let synced = db
                 .get_last_synced(&acct.uid, "transactions")
@@ -1168,28 +1865,11 @@ async fn forecast_all_banks(
 }
 
 async fn compute_account_forecast(
-    client: &client::Client,
     db: &store::SqliteStore,
     account_uid: &str,
     iban: &str,
     bank_name: &str,
-    refresh: bool,
 ) -> Result<aggregator::forecast::AccountForecast> {
-    if refresh {
-        let balances = client
-            .get_balances(account_uid)
-            .await
-            .context("get balances")?;
-        let recs = to_balance_records(balances);
-        db.replace_balances(account_uid, &recs, Utc::now()).await?;
-
-        let pending_txns = fetch_pending_transactions(client, account_uid).await?;
-        let txn_recs = to_transaction_records(account_uid, pending_txns);
-        db.upsert_transactions(account_uid, &txn_recs).await?;
-        db.set_last_synced(account_uid, "transactions", Utc::now())
-            .await?;
-    }
-
     let (bals, _) = db.get_balances(account_uid).await.unwrap_or_default();
 
     let balance_inputs: Vec<aggregator::forecast::BalanceInput> = bals
@@ -1235,13 +1915,6 @@ async fn compute_account_forecast(
     fc.iban = iban.to_string();
     fc.bank_name = bank_name.to_string();
     Ok(fc)
-}
-
-async fn fetch_pending_transactions(
-    client: &client::Client,
-    account_uid: &str,
-) -> Result<Vec<client::Transaction>> {
-    fetch_all_transactions(client, account_uid, None, None, Some("PDNG")).await
 }
 
 fn print_forecast_table(
@@ -1837,7 +2510,10 @@ async fn cmd_tag(args: &TagArgs, cfg: &config::Config) -> Result<()> {
                         ]
                     })
                     .collect();
-                let pr = output::Printer { json: false };
+                let pr = output::Printer {
+                    json: false,
+                    csv: false,
+                };
                 pr.print_table_with_footer(
                     headers,
                     rows,
@@ -1988,34 +2664,13 @@ async fn cmd_alerts_check(
     use alerter::TransactionRecord as AlertTxn;
 
     if cfg.alert_rules.is_empty() {
-        anyhow::bail!("no alert rules configured; use 'alerts add' first");
+        anyhow::bail!("no alert rules configured; use 'alert add' first");
     }
 
     let db = open_store(cfg)?;
 
     let sessions = session::load(&cfg.session_path())?.unwrap_or_default();
     let session_valid = sessions.values().any(|s| s.is_valid());
-
-    if args.refresh {
-        if !session_valid {
-            anyhow::bail!("cannot refresh: no valid sessions; run auth first");
-        }
-        let api_client = new_client(cfg)?;
-        for (bank_name, sess) in &sessions {
-            if !sess.is_valid() {
-                eprintln!("Warning: skipping {bank_name} (session expired)");
-                continue;
-            }
-            for acct in &sess.accounts {
-                let api_txns =
-                    fetch_all_transactions(&api_client, &acct.uid, None, None, None).await?;
-                let recs = to_transaction_records(&acct.uid, api_txns);
-                db.upsert_transactions(&acct.uid, &recs).await?;
-                db.set_last_synced(&acct.uid, "transactions", Utc::now())
-                    .await?;
-            }
-        }
-    }
 
     let store_txns = db.get_all_transactions().await?;
 
@@ -2092,7 +2747,7 @@ async fn cmd_alerts_check(
         pr.print_table(headers, rows)?;
 
         if output.exit_code == 2 {
-            println!("\nSession expired — run auth to refresh.");
+            println!("\nSession expired — run bank connect to refresh.");
         } else {
             let triggered = output
                 .results
@@ -2154,54 +2809,73 @@ async fn cmd_alerts(args: &AlertsArgs, cfg: &config::Config, pr: &output::Printe
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let json_output = cli.format == OutputFormat::Json;
+    let output_format = cli.format;
+    let config_path = cli.config.clone();
 
     match cli.command {
-        Commands::Version => cmd_version(),
-        Commands::Banks(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_banks(&args, &cfg, &pr).await
+        Commands::Version => cmd_version(json_output),
+        Commands::Doctor => {
+            let pr = printer(output_format);
+            cmd_doctor(config_path.as_deref(), &pr)
         }
-        Commands::Auth(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            cmd_auth(&args, &cfg).await
+        Commands::Bank(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
+            match args.action {
+                BankAction::List(list_args) => cmd_banks(&list_args, &cfg, &pr).await,
+                BankAction::Connect(connect_args) => cmd_auth(&connect_args, &cfg).await,
+                BankAction::Status => cmd_bank_status(&cfg, &pr).await,
+            }
         }
-        Commands::Accounts(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_accounts(&args, &cfg, &pr).await
+        Commands::Account(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
+            match args.action {
+                AccountAction::List(list_args) => cmd_accounts(&list_args.into(), &cfg, &pr).await,
+                AccountAction::Alias(alias_args) => {
+                    let alias_command = AliasCommand::from(alias_args.action);
+                    cmd_accounts_alias(&alias_command, &cfg, &pr).await
+                }
+            }
         }
-        Commands::Balances(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_balances(&args, &cfg, &pr).await
+        Commands::Balance(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
+            match args.action {
+                BalanceAction::List(list_args) => cmd_balances(&list_args, &cfg, &pr).await,
+            }
         }
-        Commands::Transactions(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_transactions(&args, &cfg, &pr).await
+        Commands::Tx(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
+            match args.action {
+                TxAction::List(list_args) => cmd_transactions(&list_args, &cfg, &pr).await,
+                TxAction::Tag(tag_args) => cmd_tag(&tag_args, &cfg).await,
+            }
         }
-        Commands::Forecast(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_forecast(&args, &cfg, &pr).await
+        Commands::Report(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
+            match args.action {
+                ReportAction::Summary(summary_args) => cmd_summary(&summary_args, &cfg, &pr).await,
+                ReportAction::Forecast(forecast_args) => {
+                    cmd_forecast(&forecast_args, &cfg, &pr).await
+                }
+            }
         }
-        Commands::Summary(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_summary(&args, &cfg, &pr).await
-        }
-        Commands::Tag(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            cmd_tag(&args, &cfg).await
-        }
-        Commands::Alerts(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
+        Commands::Alert(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
             cmd_alerts(&args, &cfg, &pr).await
         }
+        Commands::Sync(args) => {
+            let cfg = load_config(config_path.as_deref())?;
+            let pr = printer(output_format);
+            cmd_sync(&args, &cfg, &pr).await
+        }
         Commands::Tui => {
-            let cfg = load_config(cli.config.as_deref())?;
+            let cfg = load_config(config_path.as_deref())?;
             tui::run(cfg).await
         }
     }

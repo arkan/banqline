@@ -28,14 +28,18 @@ pub fn iban_suffix(iban: &str, n: usize) -> String {
     format!("...{}", &iban[iban.len() - n..])
 }
 
-/// Printer formats output as table (borderless) or JSON.
+/// Printer formats output as table (borderless), JSON, or CSV.
 pub struct Printer {
     pub json: bool,
+    pub csv: bool,
 }
 
 impl Printer {
     /// Writes headers and rows as a borderless aligned table to stdout.
     pub fn print_table(&self, headers: Vec<String>, rows: Vec<Vec<String>>) -> Result<()> {
+        if self.csv {
+            return self.print_csv_to(&mut io::stdout(), headers, rows);
+        }
         self.print_table_to(&mut io::stdout(), headers, rows)
     }
 
@@ -53,6 +57,19 @@ impl Printer {
         let mut table = builder.build();
         table.with(Style::blank());
         write!(w, "{table}").context("write table")
+    }
+
+    fn print_csv_to(
+        &self,
+        w: &mut dyn Write,
+        headers: Vec<String>,
+        rows: Vec<Vec<String>>,
+    ) -> Result<()> {
+        write_csv_record(w, &headers)?;
+        for row in rows {
+            write_csv_record(w, &row)?;
+        }
+        Ok(())
     }
 
     /// Outputs any serializable value as indented JSON to stdout.
@@ -95,6 +112,24 @@ impl Printer {
     }
 }
 
+fn write_csv_record(w: &mut dyn Write, fields: &[String]) -> Result<()> {
+    for (idx, field) in fields.iter().enumerate() {
+        if idx > 0 {
+            write!(w, ",").context("write csv separator")?;
+        }
+        write!(w, "{}", escape_csv_field(field)).context("write csv field")?;
+    }
+    writeln!(w).context("write csv newline")
+}
+
+fn escape_csv_field(field: &str) -> String {
+    if field.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", field.replace('"', "\"\""))
+    } else {
+        field.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,7 +155,10 @@ mod tests {
     #[test]
     fn test_print_table() {
         let mut buf = Vec::new();
-        let p = Printer { json: false };
+        let p = Printer {
+            json: false,
+            csv: false,
+        };
 
         let headers = vec!["NAME".into(), "IBAN".into(), "CURRENCY".into()];
         let rows = vec![
@@ -145,7 +183,10 @@ mod tests {
     #[test]
     fn test_print_table_empty() {
         let mut buf = Vec::new();
-        let p = Printer { json: false };
+        let p = Printer {
+            json: false,
+            csv: false,
+        };
 
         p.print_table_to(&mut buf, vec!["COL".into()], vec![])
             .unwrap();
@@ -156,7 +197,10 @@ mod tests {
     #[test]
     fn test_print_json() {
         let mut buf = Vec::new();
-        let p = Printer { json: true };
+        let p = Printer {
+            json: true,
+            csv: false,
+        };
 
         let mut input = serde_json::Map::new();
         input.insert("name".into(), "test".into());
@@ -172,7 +216,10 @@ mod tests {
     #[test]
     fn test_print_json_indented() {
         let mut buf = Vec::new();
-        let p = Printer { json: true };
+        let p = Printer {
+            json: true,
+            csv: false,
+        };
 
         let mut input = serde_json::Map::new();
         input.insert("a".into(), serde_json::Value::Number(1.into()));

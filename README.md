@@ -27,7 +27,7 @@ Current and planned capabilities include:
 - tag transactions using configurable rules;
 - define and check local balance/transaction alerts;
 - launch an interactive terminal UI dashboard;
-- output either human-readable tables or JSON.
+- output human-readable tables, JSON, or CSV via `--format`.
 
 ## Installation
 
@@ -87,35 +87,50 @@ You need an Enable Banking application and a PEM-encoded RSA private key configu
 # Show version
 banqline version
 
+# Diagnose local setup before connecting a bank
+banqline doctor
+banqline --format json doctor
+
 # List banks for a country
-banqline banks --country FR
+banqline bank list --country FR
 
 # Authenticate with a bank
-banqline auth --country FR --bank BANK_NAME
+banqline bank connect --country FR --bank BANK_NAME
 
-# List accounts
-banqline accounts
+# Check local bank sessions
+banqline bank status
 
-# Display balances
-banqline balances
+# Sync local cache from bank APIs
+banqline sync
+banqline sync tx --from 2026-01-01
+banqline sync balances
 
-# Fetch recent transactions
-banqline transactions --from 2026-01-01 --limit 100
+# List accounts from local cache
+banqline account list
+
+# Display cached balances
+banqline balance list
+
+# Read cached transactions
+banqline tx list --from 2026-01-01 --limit 100
 
 # Machine-readable output
-banqline --json transactions --from 2026-01-01 --limit 100
+banqline --format json tx list --from 2026-01-01 --limit 100
+banqline --format csv tx list --from 2026-01-01 --limit 100
 
 # Spending summary
-banqline summary --period month --compare
+banqline report summary --period month --compare
 
 # Forecast
-banqline forecast --all --detail
+banqline report forecast --all --detail
 
-# Interactive TUI
+# Interactive TUI (? opens the shortcut help)
 banqline tui
 ```
 
 Run `banqline <command> --help` for command-specific options.
+
+`sync` talks to the bank API and updates the local cache. `list`, `report`, and `alert check` read from the local cache only.
 
 ## Local data and security
 

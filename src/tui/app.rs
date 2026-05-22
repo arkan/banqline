@@ -167,6 +167,7 @@ pub struct App {
     note_txn_id: String,
     note_account_uid: String,
     refresh: RefreshState,
+    help_open: bool,
     status: String,
 }
 
@@ -241,6 +242,7 @@ impl App {
                 done: false,
                 steps: Vec::new(),
             },
+            help_open: false,
             status: String::new(),
         })
     }
@@ -393,6 +395,17 @@ impl App {
                     continue;
                 }
 
+                // Help overlay is intentionally global and read-only.
+                if self.help_open {
+                    match key.code {
+                        KeyCode::Char('?') | KeyCode::Esc | KeyCode::Enter => {
+                            self.help_open = false;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 // If refresh modal is open and done, Enter/Esc/Escape closes it.
                 if self.refresh.open && self.refresh.done {
                     match key.code {
@@ -410,6 +423,10 @@ impl App {
                 if !input_active {
                     match key.code {
                         KeyCode::Char('q') => break,
+                        KeyCode::Char('?') => {
+                            self.help_open = true;
+                            continue;
+                        }
                         KeyCode::Esc => {
                             if self.tag.open {
                                 self.tag.open = false;
@@ -477,8 +494,7 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Char(c) => {
-                    self.note_input
-                        .insert(self.note_cursor, c.to_ascii_uppercase());
+                    self.note_input.insert(self.note_cursor, c);
                     self.note_cursor += 1;
                     return Ok(());
                 }
@@ -1217,14 +1233,57 @@ impl App {
         if self.refresh.open {
             self.render_refresh_modal(f);
         }
+        if self.help_open {
+            self.render_help_modal(f);
+        }
         let status = Span::styled(
             format!(
-                " {}  |  q:quit  r:refresh  j/k:accounts  ←→:tabs  ↑↓:scroll",
+                " {}  |  ?:help  q:quit  r:refresh  j/k:accounts  ←→:tabs  ↑↓:scroll",
                 self.status
             ),
             Style::default().fg(Color::DarkGray),
         );
         f.render_widget(Paragraph::new(Line::from(status)), chunks[1]);
+    }
+
+    fn render_help_modal(&self, f: &mut Frame) {
+        let popup_area = centered_rect(70, 70, f.area());
+        f.render_widget(Clear, popup_area);
+        let lines = vec![
+            Line::from(Span::styled(
+                "Banqline TUI shortcuts",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from("Global"),
+            Line::from("  ?         open/close this help"),
+            Line::from("  q         quit"),
+            Line::from("  r         refresh accounts, balances, transactions, tags and alerts"),
+            Line::from("  j / k     switch account"),
+            Line::from("  ← / →     switch panel tab"),
+            Line::from(""),
+            Line::from("Transactions"),
+            Line::from("  /         search"),
+            Line::from("  f         toggle filters"),
+            Line::from("  c / d     cycle category / direction filters"),
+            Line::from("  t         tag selected transaction"),
+            Line::from("  n         edit note without forcing uppercase"),
+            Line::from(""),
+            Line::from("Report"),
+            Line::from("  m / w / D switch month, week, day"),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Esc or Enter closes this help",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ];
+        let popup = Paragraph::new(Text::from(lines))
+            .block(Block::default().borders(Borders::ALL).title(" Help "))
+            .style(Style::default().bg(Color::Black))
+            .wrap(Wrap { trim: false });
+        f.render_widget(popup, popup_area);
     }
 
     fn render_refresh_modal(&self, f: &mut Frame) {
@@ -1287,7 +1346,7 @@ impl App {
     fn render_accounts(&mut self, f: &mut Frame, area: Rect) {
         if self.accounts.is_empty() {
             f.render_widget(
-                Paragraph::new("No accounts found.\nRun 'banqline auth' first.")
+                Paragraph::new("No accounts found.\n\nNext steps:\n  1. banqline bank connect --country FR --bank <name>\n  2. banqline tui\n\nPress ? for shortcuts.")
                     .block(Block::default().borders(Borders::ALL).title(" Accounts ")),
                 area,
             );
