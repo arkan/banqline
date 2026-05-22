@@ -1,0 +1,25 @@
+# Rust build artifacts
+target/
+
+# Local/editor files
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Banqline local state
+.banqline/
+config.yaml
+session.json
+*.db
+*.sqlite
+*.sqlite3

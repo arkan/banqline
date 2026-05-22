@@ -1,0 +1,80 @@
+[package]
+name = "banqline"
+version = "0.1.0"
+edition = "2024"
+description = "A terminal-first personal banking CLI and TUI powered by Enable Banking"
+license = "MIT"
+autobins = false
+
+[[bin]]
+name = "banqline"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# OAuth callback server
+tiny_http = "0.12"
+
+# YAML / JSON serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Decimal arithmetic
+rust_decimal = { version = "1", features = ["serde"] }
+rust_decimal_macros = "1"
+
+# JWT / Crypto
+jsonwebtoken = "9"
+rsa = "0.9"
+rand = "0.8"
+sha2 = { version = "0.10", features = ["oid"] }
+base64 = "0.22"
+pem = "3"
+
+# SQLite
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# UUID
+uuid = { version = "1", features = ["v4"] }
+
+# Date / Time (also used by rusqlite)
+chrono = { version = "0.4", features = ["serde"] }
+
+# Table output
+tabled = "0.17"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# File system
+tempfile = "3"
+dirs = "5"
+
+# Ordered map (preserves insertion order for YAML deserialization)
+indexmap = { version = "2", features = ["serde"] }
+
+# Browser open
+open = "5"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
