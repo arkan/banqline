@@ -172,10 +172,11 @@ pub struct App {
 
 impl App {
     pub async fn run(cfg: Config) -> Result<()> {
+        let mut app = Self::new(cfg).await?;
+
         enable_raw_mode()?;
         let mut stdout = std::io::stdout();
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let mut app = Self::new(cfg).await?;
         let result = app.event_loop().await;
         disable_raw_mode()?;
         execute!(stdout, LeaveAlternateScreen, DisableMouseCapture)?;
@@ -183,8 +184,16 @@ impl App {
     }
 
     async fn new(cfg: Config) -> Result<Self> {
-        let db_path = cfg.data_dir.clone();
-        let db = SqliteStore::open(&format!("{}/data.db", db_path))?;
+        let db_path = std::path::PathBuf::from(&cfg.data_dir).join("data.db");
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create dir {}", parent.display()))?;
+        }
+        let db = SqliteStore::open(
+            db_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("invalid db path"))?,
+        )?;
         let db = std::sync::Arc::new(db);
         let sessions = session::load(&cfg.session_path())
             .ok()
@@ -2066,4 +2075,26 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn new_creates_data_dir_before_opening_database() {
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = temp.path().join("missing-data-dir");
+        let cfg = Config {
+            data_dir: data_dir.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+
+        let app = App::new(cfg).await;
+
+        if let Err(err) = &app {
+            panic!("expected App::new to create data dir: {err:#}");
+        }
+        assert!(data_dir.join("data.db").exists());
+    }
 }
