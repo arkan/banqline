@@ -31,6 +31,35 @@ Current and planned capabilities include:
 
 ## Installation
 
+### With Nix
+
+Run without installing:
+
+```bash
+nix run github:arkan/banqline -- --help
+```
+
+Install into your user profile:
+
+```bash
+nix profile install github:arkan/banqline
+```
+
+From a local checkout:
+
+```bash
+git clone https://github.com/arkan/banqline.git
+cd banqline
+nix build
+./result/bin/banqline --help
+```
+
+For development with Rust tooling provided by Nix:
+
+```bash
+nix develop
+```
+
 ### From source
 
 ```bash
