@@ -7,7 +7,6 @@ mod auth;
 mod client;
 mod config;
 mod output;
-mod prompt;
 mod session;
 mod store;
 mod tagger;
@@ -333,10 +332,10 @@ async fn resolve_account<'a>(
 }
 
 async fn resolve_alias(db: Option<&store::SqliteStore>, account_flag: &str) -> String {
-    if let Some(db) = db {
-        if let Ok(Some(acct)) = db.get_account_by_alias(account_flag).await {
-            return acct.uid;
-        }
+    if let Some(db) = db
+        && let Ok(Some(acct)) = db.get_account_by_alias(account_flag).await
+    {
+        return acct.uid;
     }
     account_flag.to_string()
 }
@@ -708,10 +707,10 @@ async fn cmd_accounts(
             .map(|b| format_amount(&b.amount))
             .unwrap_or_else(|| "-".to_string());
 
-        if let Some(b) = booked {
-            if let Ok(v) = Decimal::from_str_exact(&b.amount) {
-                total_booked += v;
-            }
+        if let Some(b) = booked
+            && let Ok(v) = Decimal::from_str_exact(&b.amount)
+        {
+            total_booked += v;
         }
 
         rows.push(vec![
@@ -1399,13 +1398,13 @@ fn print_forecast_json(
             ),
         );
     }
-    if let Some(dt) = oldest_synced {
-        if dt != DateTime::<Utc>::default() {
-            envelope.insert(
-                "last_synced".into(),
-                serde_json::Value::String(dt.to_rfc3339()),
-            );
-        }
+    if let Some(dt) = oldest_synced
+        && dt != DateTime::<Utc>::default()
+    {
+        envelope.insert(
+            "last_synced".into(),
+            serde_json::Value::String(dt.to_rfc3339()),
+        );
     }
 
     pr.print_json(&envelope)
@@ -1893,14 +1892,14 @@ fn alert_rule_row(r: &alerter::AlertRule) -> Vec<String> {
 async fn cmd_alerts_add(args: &AlertsAddArgs, cfg: &config::Config) -> Result<()> {
     use alerter::types::{AlertRule, CategoryAlertCriteria, TransactionAlertCriteria};
 
-    if args.rule_type == "category" {
-        if let Some(ref cat) = args.category {
-            let valid = cfg.tag_rules.0.iter().any(|r| r.category == *cat);
-            if !valid {
-                anyhow::bail!(
-                    "category '{cat}' not found in tag_rules; add it first or check spelling"
-                );
-            }
+    if args.rule_type == "category"
+        && let Some(ref cat) = args.category
+    {
+        let valid = cfg.tag_rules.0.iter().any(|r| r.category == *cat);
+        if !valid {
+            anyhow::bail!(
+                "category '{cat}' not found in tag_rules; add it first or check spelling"
+            );
         }
     }
 
@@ -2148,6 +2147,66 @@ async fn cmd_alerts(args: &AlertsArgs, cfg: &config::Config, pr: &output::Printe
     }
 }
 
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Version => cmd_version(),
+        Commands::Banks(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_banks(&args, &cfg, &pr).await
+        }
+        Commands::Auth(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            cmd_auth(&args, &cfg).await
+        }
+        Commands::Accounts(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_accounts(&args, &cfg, &pr).await
+        }
+        Commands::Balances(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_balances(&args, &cfg, &pr).await
+        }
+        Commands::Transactions(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_transactions(&args, &cfg, &pr).await
+        }
+        Commands::Forecast(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_forecast(&args, &cfg, &pr).await
+        }
+        Commands::Summary(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_summary(&args, &cfg, &pr).await
+        }
+        Commands::Tag(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            cmd_tag(&args, &cfg).await
+        }
+        Commands::Alerts(args) => {
+            let cfg = load_config(cli.config.as_deref())?;
+            let pr = printer(cli.json);
+            cmd_alerts(&args, &cfg, &pr).await
+        }
+        Commands::Tui => {
+            let cfg = load_config(cli.config.as_deref())?;
+            tui::run(cfg).await
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2226,65 +2285,5 @@ mod tests {
 
         assert_eq!(txns[0].transaction_id, "value-date");
         assert_eq!(txns[1].transaction_id, "transaction-date");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-
-    match cli.command {
-        Commands::Version => cmd_version(),
-        Commands::Banks(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_banks(&args, &cfg, &pr).await
-        }
-        Commands::Auth(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            cmd_auth(&args, &cfg).await
-        }
-        Commands::Accounts(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_accounts(&args, &cfg, &pr).await
-        }
-        Commands::Balances(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_balances(&args, &cfg, &pr).await
-        }
-        Commands::Transactions(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_transactions(&args, &cfg, &pr).await
-        }
-        Commands::Forecast(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_forecast(&args, &cfg, &pr).await
-        }
-        Commands::Summary(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_summary(&args, &cfg, &pr).await
-        }
-        Commands::Tag(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            cmd_tag(&args, &cfg).await
-        }
-        Commands::Alerts(args) => {
-            let cfg = load_config(cli.config.as_deref())?;
-            let pr = printer(cli.json);
-            cmd_alerts(&args, &cfg, &pr).await
-        }
-        Commands::Tui => {
-            let cfg = load_config(cli.config.as_deref())?;
-            tui::run(cfg).await
-        }
     }
 }

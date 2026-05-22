@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A locally stored bank account.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AccountRecord {
     pub uid: String,
     pub bank_name: String,
@@ -15,7 +15,7 @@ pub struct AccountRecord {
 }
 
 /// A locally stored account balance snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BalanceRecord {
     pub balance_type: String,
     pub amount: String,
@@ -42,6 +42,29 @@ pub struct TransactionRecord {
     pub note: String,
     pub category: String,
     pub category_source: String,
+}
+
+impl Default for TransactionRecord {
+    fn default() -> Self {
+        TransactionRecord {
+            account_uid: String::new(),
+            transaction_id: String::new(),
+            entry_reference: String::new(),
+            amount: String::new(),
+            currency: String::new(),
+            booking_date: String::new(),
+            value_date: String::new(),
+            transaction_date: String::new(),
+            remittance_info: Vec::new(),
+            creditor_name: String::new(),
+            debtor_name: String::new(),
+            status: String::new(),
+            credit_debit_indicator: String::new(),
+            note: String::new(),
+            category: "uncategorized".into(),
+            category_source: String::new(),
+        }
+    }
 }
 
 /// A category update for a single transaction.

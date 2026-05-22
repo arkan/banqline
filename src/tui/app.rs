@@ -74,7 +74,7 @@ enum ReportPeriod {
     Month,
 }
 impl ReportPeriod {
-    fn to_aggregator(&self) -> Period {
+    fn to_aggregator(self) -> Period {
         match self {
             ReportPeriod::Day => Period::Day,
             ReportPeriod::Week => Period::Week,
@@ -257,10 +257,10 @@ impl App {
         for bank_name in sessions.keys() {
             if let Ok(records) = db.get_accounts(bank_name).await {
                 for rec in &records {
-                    if let Ok((bals, _)) = db.get_balances(&rec.uid).await {
-                        if !bals.is_empty() {
-                            balances_map.insert(rec.uid.clone(), bals.clone());
-                        }
+                    if let Ok((bals, _)) = db.get_balances(&rec.uid).await
+                        && !bals.is_empty()
+                    {
+                        balances_map.insert(rec.uid.clone(), bals.clone());
                     }
                     let bal_inputs: Vec<forecast::BalanceInput> = balances_map
                         .get(&rec.uid)
@@ -814,17 +814,16 @@ impl App {
                                 category_source: String::new(),
                             })
                             .collect();
-                        if !records.is_empty() {
-                            if let Err(e) = self
+                        if !records.is_empty()
+                            && let Err(e) = self
                                 .db
                                 .upsert_transactions(&acct.uid, &records)
                                 .await
                                 .with_context(|| format!("upsert transactions for {}", acct.uid))
-                            {
-                                self.stop_refresh_with_error(1, format!("{:#}", e));
-                                terminal.draw(|f| self.render(f))?;
-                                return Ok(());
-                            }
+                        {
+                            self.stop_refresh_with_error(1, format!("{:#}", e));
+                            terminal.draw(|f| self.render(f))?;
+                            return Ok(());
                         }
                         if let Err(e) = self
                             .db
@@ -2032,7 +2031,7 @@ impl App {
         for i in 0..points {
             let t = i as f64 / (points - 1) as f64;
             let val = (booked_f64 + diff * t * t).abs() as u64;
-            data.push(val.min(u64::MAX / 2).max(0));
+            data.push(val.min(u64::MAX / 2));
         }
         data
     }

@@ -423,12 +423,11 @@ impl Store for SqliteStore {
 
             query.push_str(" ORDER BY booking_date DESC, id DESC");
 
-            if let Some(limit) = opts.limit {
-                if limit > 0 {
+            if let Some(limit) = opts.limit
+                && limit > 0 {
                     query.push_str(&format!(" LIMIT ?{next_idx}"));
                     param_values.push(Box::new(limit));
                 }
-            }
 
             let params: Vec<&dyn rusqlite::types::ToSql> =
                 param_values.iter().map(|p| p.as_ref()).collect();
@@ -1495,7 +1494,7 @@ mod tests {
             ..Default::default()
         };
         store
-            .upsert_transactions("acc-001", &[txn.clone()])
+            .upsert_transactions("acc-001", std::slice::from_ref(&txn))
             .await
             .unwrap();
         store
@@ -1542,7 +1541,7 @@ mod tests {
             ..Default::default()
         };
         store
-            .upsert_transactions("acc-001", &[txn.clone()])
+            .upsert_transactions("acc-001", std::slice::from_ref(&txn))
             .await
             .unwrap();
 
@@ -1749,55 +1748,5 @@ mod tests {
         let store = open_test_store();
         let acct = store.get_account_by_alias("nonexistent").await.unwrap();
         assert!(acct.is_none());
-    }
-}
-
-impl Default for AccountRecord {
-    fn default() -> Self {
-        AccountRecord {
-            uid: String::new(),
-            bank_name: String::new(),
-            iban: String::new(),
-            name: String::new(),
-            currency: String::new(),
-            details: String::new(),
-            usage_type: String::new(),
-            account_type: String::new(),
-            alias: String::new(),
-        }
-    }
-}
-
-impl Default for TransactionRecord {
-    fn default() -> Self {
-        TransactionRecord {
-            account_uid: String::new(),
-            transaction_id: String::new(),
-            entry_reference: String::new(),
-            amount: String::new(),
-            currency: String::new(),
-            booking_date: String::new(),
-            value_date: String::new(),
-            transaction_date: String::new(),
-            remittance_info: Vec::new(),
-            creditor_name: String::new(),
-            debtor_name: String::new(),
-            status: String::new(),
-            credit_debit_indicator: String::new(),
-            note: String::new(),
-            category: "uncategorized".into(),
-            category_source: String::new(),
-        }
-    }
-}
-
-impl Default for BalanceRecord {
-    fn default() -> Self {
-        BalanceRecord {
-            balance_type: String::new(),
-            amount: String::new(),
-            currency: String::new(),
-            reference_date: String::new(),
-        }
     }
 }

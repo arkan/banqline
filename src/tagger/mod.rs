@@ -1,9 +1,4 @@
-pub mod group;
-
 use serde::{Deserialize, Serialize};
-
-#[allow(unused_imports)]
-pub use group::*;
 
 /// Maps a category name to a list of substring patterns for matching.
 #[derive(Debug, Clone, Serialize, Deserialize)]
