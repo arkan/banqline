@@ -63,7 +63,7 @@ make install
 Banqline uses a YAML configuration file, by default:
 
 ```text
-~/.banqline/config.yaml
+~/.config/banqline/config.yaml
 ```
 
 Minimal example:
@@ -117,10 +117,10 @@ Run `banqline <command> --help` for command-specific options.
 
 ## Local data and security
 
-Banqline stores sensitive runtime data locally, under `~/.banqline` by default. This may include:
+Banqline stores its configuration at `~/.config/banqline/config.yaml` by default, and stores sensitive runtime data locally under `~/.banqline` unless `data_dir` is overridden. This may include:
 
-- `config.yaml` — application configuration;
-- `session.json` — bank sessions/tokens;
+- `~/.config/banqline/config.yaml` — application configuration;
+- `~/.banqline/session.json` — bank sessions/tokens;
 - local SQLite data/cache files;
 - transaction tags and alert rules.
 

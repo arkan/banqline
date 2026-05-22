@@ -73,7 +73,7 @@ impl<'de> Deserialize<'de> for TagRules {
 // ---------------------------------------------------------------------------
 
 /// Application configuration, backed by a YAML file at
-/// `~/.banqline/config.yaml` (or the path set via `data_dir`).
+/// `~/.config/banqline/config.yaml` by default.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Enable Banking application ID (OAuth `client_id`).
@@ -133,6 +133,14 @@ fn default_data_dir() -> String {
         .join(".banqline")
         .to_string_lossy()
         .to_string()
+}
+
+fn default_config_path() -> PathBuf {
+    dirs::config_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+        .unwrap_or_default()
+        .join("banqline")
+        .join("config.yaml")
 }
 
 fn default_log_level() -> String {
@@ -206,10 +214,9 @@ impl Config {
         Ok(())
     }
 
-    /// Returns the expected path of the config YAML file inside the data
-    /// directory.
+    /// Returns the expected path of the config YAML file.
     pub fn config_path(&self) -> PathBuf {
-        PathBuf::from(&self.data_dir).join("config.yaml")
+        default_config_path()
     }
 
     /// Returns the expected path of the session JSON file inside the data
@@ -278,7 +285,11 @@ mod tests {
         };
         assert_eq!(
             cfg.config_path(),
-            PathBuf::from("/home/user/.banqline/config.yaml")
+            dirs::config_dir()
+                .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+                .unwrap_or_default()
+                .join("banqline")
+                .join("config.yaml")
         );
         assert_eq!(
             cfg.session_path(),
