@@ -31,6 +31,56 @@ Current and planned capabilities include:
 
 ## Installation
 
+### From a prebuilt release (recommended)
+
+Download the archive matching your platform from the latest
+[GitHub Release](https://github.com/arkan/banqline/releases). Release archives are named:
+
+```text
+banqline-<version>-<target>.tar.gz
+```
+
+Available targets:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+
+Example install script:
+
+```bash
+version="v0.1.0" # replace with the release you want
+repo="arkan/banqline"
+
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) target="x86_64-unknown-linux-gnu" ;;
+  Linux-aarch64 | Linux-arm64) target="aarch64-unknown-linux-gnu" ;;
+  Darwin-x86_64) target="x86_64-apple-darwin" ;;
+  Darwin-arm64) target="aarch64-apple-darwin" ;;
+  *) echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
+esac
+
+archive="banqline-${version#v}-${target}.tar.gz"
+base_url="https://github.com/${repo}/releases/download/${version}"
+
+curl -LO "${base_url}/${archive}"
+curl -LO "${base_url}/checksums-sha256.txt"
+
+# Verify the downloaded archive.
+if command -v sha256sum >/dev/null 2>&1; then
+  grep "  ${archive}$" checksums-sha256.txt | sha256sum -c -
+else
+  grep "  ${archive}$" checksums-sha256.txt | shasum -a 256 -c -
+fi
+
+tar -xzf "${archive}"
+install_dir="/usr/local/bin"
+sudo install -m 0755 "banqline-${version#v}-${target}/banqline" \
+  "${install_dir}/banqline"
+banqline --help
+```
+
 ### With Nix
 
 Run without installing:
@@ -62,10 +112,12 @@ nix develop
 
 ### From source
 
+Use this if you want to build from the checkout instead of using a prebuilt release:
+
 ```bash
 git clone https://github.com/arkan/banqline.git
 cd banqline
-cargo build --release
+cargo build --release --bin banqline
 ```
 
 The binary is produced at:
