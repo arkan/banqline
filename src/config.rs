@@ -3,6 +3,7 @@
 // Mirrors internal/config/config.go from the Go codebase.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
@@ -191,8 +192,31 @@ impl Config {
         }
 
         let yaml = serde_yaml::to_string(self).context("marshal config")?;
+        let tmp_path = path.with_extension("yaml.tmp");
+        let mut tmp_file = std::fs::File::create(&tmp_path)
+            .with_context(|| format!("create temp file {}", tmp_path.display()))?;
 
-        std::fs::write(path, &yaml).with_context(|| format!("write {}", path.display()))?;
+        tmp_file
+            .write_all(yaml.as_bytes())
+            .with_context(|| format!("write temp file {}", tmp_path.display()))?;
+        tmp_file
+            .flush()
+            .with_context(|| format!("flush temp file {}", tmp_path.display()))?;
+        tmp_file
+            .sync_all()
+            .with_context(|| format!("sync temp file {}", tmp_path.display()))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tmp_file
+                .set_permissions(std::fs::Permissions::from_mode(0o600))
+                .with_context(|| format!("set permissions on {}", tmp_path.display()))?;
+        }
+
+        drop(tmp_file);
+        std::fs::rename(&tmp_path, path)
+            .with_context(|| format!("rename {} -> {}", tmp_path.display(), path.display()))?;
 
         #[cfg(unix)]
         {
@@ -388,6 +412,7 @@ mod tests {
         };
 
         cfg.save(&path).unwrap();
+        assert!(!path.with_extension("yaml.tmp").exists());
 
         let reloaded = Config::load(&path).unwrap();
         assert_eq!(reloaded.application_id, "test-app");

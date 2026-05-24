@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::fs;
 
 #[test]
 fn help_exposes_new_noun_first_command_groups() {
@@ -93,6 +94,54 @@ fn format_csv_doctor_outputs_csv_header() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.starts_with("CHECK,STATUS,DETAIL,NEXT STEP\n"));
+}
+
+#[test]
+fn alert_add_writes_explicit_config_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let cfg_path = temp.path().join("custom-config.yaml");
+    let xdg_home = temp.path().join("xdg");
+    fs::write(&cfg_path, "application_id: test-app\nkey_path: test.pem\n").unwrap();
+
+    Command::cargo_bin("banqline")
+        .unwrap()
+        .env("XDG_CONFIG_HOME", &xdg_home)
+        .args([
+            "--config",
+            cfg_path.to_str().unwrap(),
+            "alert",
+            "add",
+            "--type",
+            "transaction",
+            "--name",
+            "large-card-payment",
+            "--amount-gte",
+            "100",
+        ])
+        .assert()
+        .success();
+
+    let custom_config = fs::read_to_string(&cfg_path).unwrap();
+    assert!(custom_config.contains("alert_rules:"));
+    assert!(custom_config.contains("large-card-payment"));
+    assert!(!xdg_home.join("banqline").join("config.yaml").exists());
+
+    Command::cargo_bin("banqline")
+        .unwrap()
+        .env("XDG_CONFIG_HOME", &xdg_home)
+        .args([
+            "--config",
+            cfg_path.to_str().unwrap(),
+            "alert",
+            "remove",
+            "large-card-payment",
+        ])
+        .assert()
+        .success();
+
+    let custom_config = fs::read_to_string(&cfg_path).unwrap();
+    assert!(!custom_config.contains("large-card-payment"));
+    assert!(!xdg_home.join("banqline").join("config.yaml").exists());
 }
 
 #[test]

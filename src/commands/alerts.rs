@@ -31,7 +31,11 @@ pub(crate) fn alert_rule_row(r: &alerter::AlertRule) -> Vec<String> {
     vec![r.name.clone(), r.rule_type.clone(), criteria, extra]
 }
 
-pub(crate) async fn cmd_alerts_add(args: &AlertsAddArgs, cfg: &config::Config) -> Result<()> {
+pub(crate) async fn cmd_alerts_add(
+    args: &AlertsAddArgs,
+    cfg: &config::Config,
+    config_path: &Path,
+) -> Result<()> {
     use alerter::types::{AlertRule, CategoryAlertCriteria, TransactionAlertCriteria};
 
     if args.rule_type == "category"
@@ -81,13 +85,17 @@ pub(crate) async fn cmd_alerts_add(args: &AlertsAddArgs, cfg: &config::Config) -
 
     let mut cfg = cfg.clone();
     cfg.alert_rules.push(rule.clone());
-    cfg.save(&cfg.config_path())?;
+    cfg.save(config_path)?;
 
     println!("Alert rule '{}' (type={}) added", rule.name, rule.rule_type);
     Ok(())
 }
 
-pub(crate) async fn cmd_alerts_remove(name: &str, cfg: &config::Config) -> Result<()> {
+pub(crate) async fn cmd_alerts_remove(
+    name: &str,
+    cfg: &config::Config,
+    config_path: &Path,
+) -> Result<()> {
     let mut cfg = cfg.clone();
     let len_before = cfg.alert_rules.len();
     cfg.alert_rules.retain(|r| r.name != name);
@@ -96,7 +104,7 @@ pub(crate) async fn cmd_alerts_remove(name: &str, cfg: &config::Config) -> Resul
         anyhow::bail!("alert rule '{name}' not found");
     }
 
-    cfg.save(&cfg.config_path())?;
+    cfg.save(config_path)?;
     println!("Alert rule '{name}' removed");
     Ok(())
 }
@@ -262,11 +270,13 @@ pub(crate) async fn cmd_alerts_check(
 pub(crate) async fn cmd_alerts(
     args: &AlertsArgs,
     cfg: &config::Config,
+    config_path: Option<&Path>,
     pr: &output::Printer,
 ) -> Result<()> {
+    let save_path = config_save_path(cfg, config_path);
     match &args.action {
-        AlertsAction::Add(add_args) => cmd_alerts_add(add_args, cfg).await,
-        AlertsAction::Remove { name } => cmd_alerts_remove(name, cfg).await,
+        AlertsAction::Add(add_args) => cmd_alerts_add(add_args, cfg, &save_path).await,
+        AlertsAction::Remove { name } => cmd_alerts_remove(name, cfg, &save_path).await,
         AlertsAction::List => cmd_alerts_list(cfg, pr).await,
         AlertsAction::Check(check_args) => cmd_alerts_check(check_args, cfg, pr).await,
     }

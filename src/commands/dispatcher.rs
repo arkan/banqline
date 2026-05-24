@@ -59,7 +59,7 @@ pub(crate) async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::Alert(args) => {
             let cfg = load_config(config_path.as_deref())?;
             let pr = printer(output_format);
-            cmd_alerts(&args, &cfg, &pr).await
+            cmd_alerts(&args, &cfg, config_path.as_deref(), &pr).await
         }
         Commands::Sync(args) => {
             let cfg = load_config(config_path.as_deref())?;

@@ -191,23 +191,19 @@ impl App {
 
         match code {
             // j/k: navigate sidebar accounts.
-            KeyCode::Char('j') => {
-                if self.selected_account + 1 < self.accounts.len() {
-                    self.selected_account += 1;
-                    self.account_list_state.select(Some(self.selected_account));
-                    self.txn_cursor = 0;
-                    self.txn_scroll = 0;
-                    self.pending_scroll = 0;
-                }
+            KeyCode::Char('j') if self.selected_account + 1 < self.accounts.len() => {
+                self.selected_account += 1;
+                self.account_list_state.select(Some(self.selected_account));
+                self.txn_cursor = 0;
+                self.txn_scroll = 0;
+                self.pending_scroll = 0;
             }
-            KeyCode::Char('k') => {
-                if self.selected_account > 0 {
-                    self.selected_account -= 1;
-                    self.account_list_state.select(Some(self.selected_account));
-                    self.txn_cursor = 0;
-                    self.txn_scroll = 0;
-                    self.pending_scroll = 0;
-                }
+            KeyCode::Char('k') if self.selected_account > 0 => {
+                self.selected_account -= 1;
+                self.account_list_state.select(Some(self.selected_account));
+                self.txn_cursor = 0;
+                self.txn_scroll = 0;
+                self.pending_scroll = 0;
             }
             // ↑/↓: move cursor with scroll-at-edges.
             KeyCode::Up => {
@@ -240,81 +236,63 @@ impl App {
                 let pos = all.iter().position(|t| *t == self.detail_tab).unwrap_or(0);
                 self.detail_tab = all[(pos + 1) % all.len()];
             }
-            KeyCode::Char('/') => {
-                if self.detail_tab == DetailTab::Transactions {
-                    self.search_open = true;
-                    self.search_input.clear();
-                }
+            KeyCode::Char('/') if self.detail_tab == DetailTab::Transactions => {
+                self.search_open = true;
+                self.search_input.clear();
             }
-            KeyCode::Char('n') => {
-                if self.detail_tab == DetailTab::Transactions {
-                    self.open_note_popup();
-                }
+            KeyCode::Char('n') if self.detail_tab == DetailTab::Transactions => {
+                self.open_note_popup();
             }
-            KeyCode::Char('t') => {
-                if self.detail_tab == DetailTab::Transactions {
-                    self.open_tag_popup();
-                }
+            KeyCode::Char('t') if self.detail_tab == DetailTab::Transactions => {
+                self.open_tag_popup();
             }
-            KeyCode::Char('f') => {
-                if self.detail_tab == DetailTab::Transactions {
-                    self.txn_filter.active = !self.txn_filter.active;
-                    self.txn_cursor = 0;
-                    self.txn_scroll = 0;
-                }
+            KeyCode::Char('f') if self.detail_tab == DetailTab::Transactions => {
+                self.txn_filter.active = !self.txn_filter.active;
+                self.txn_cursor = 0;
+                self.txn_scroll = 0;
             }
-            KeyCode::Char('c') => {
-                if self.detail_tab == DetailTab::Transactions {
-                    let mut cats: Vec<String> = self
-                        .cfg
-                        .tag_rules
-                        .0
-                        .iter()
-                        .map(|r| r.category.clone())
-                        .collect();
-                    cats.push("uncategorized".into());
-                    let current = self.txn_filter.category.clone();
-                    if let Some(pos) = cats.iter().position(|c| Some(c) == current.as_ref()) {
-                        let next = (pos + 1) % (cats.len() + 1);
-                        self.txn_filter.category = if next < cats.len() {
-                            Some(cats[next].clone())
-                        } else {
-                            None
-                        };
+            KeyCode::Char('c') if self.detail_tab == DetailTab::Transactions => {
+                let mut cats: Vec<String> = self
+                    .cfg
+                    .tag_rules
+                    .0
+                    .iter()
+                    .map(|r| r.category.clone())
+                    .collect();
+                cats.push("uncategorized".into());
+                let current = self.txn_filter.category.clone();
+                if let Some(pos) = cats.iter().position(|c| Some(c) == current.as_ref()) {
+                    let next = (pos + 1) % (cats.len() + 1);
+                    self.txn_filter.category = if next < cats.len() {
+                        Some(cats[next].clone())
                     } else {
-                        self.txn_filter.category = Some(cats[0].clone());
-                    }
-                    self.txn_filter.active = self.txn_filter.category.is_some();
-                    self.txn_cursor = 0;
-                    self.txn_scroll = 0;
-                }
-            }
-            KeyCode::Char('d') => {
-                if self.detail_tab == DetailTab::Transactions {
-                    self.txn_filter.direction = match self.txn_filter.direction.as_deref() {
-                        None => Some("DBIT".into()),
-                        Some("DBIT") => Some("CRDT".into()),
-                        _ => None,
+                        None
                     };
-                    self.txn_filter.active = true;
-                    self.txn_cursor = 0;
-                    self.txn_scroll = 0;
+                } else {
+                    self.txn_filter.category = Some(cats[0].clone());
                 }
+                self.txn_filter.active = self.txn_filter.category.is_some();
+                self.txn_cursor = 0;
+                self.txn_scroll = 0;
             }
-            KeyCode::Char('m') => {
-                if self.detail_tab == DetailTab::Report {
-                    self.report_period = ReportPeriod::Month;
-                }
+            KeyCode::Char('d') if self.detail_tab == DetailTab::Transactions => {
+                self.txn_filter.direction = match self.txn_filter.direction.as_deref() {
+                    None => Some("DBIT".into()),
+                    Some("DBIT") => Some("CRDT".into()),
+                    _ => None,
+                };
+                self.txn_filter.active = true;
+                self.txn_cursor = 0;
+                self.txn_scroll = 0;
             }
-            KeyCode::Char('w') => {
-                if self.detail_tab == DetailTab::Report {
-                    self.report_period = ReportPeriod::Week;
-                }
+            KeyCode::Char('m') if self.detail_tab == DetailTab::Report => {
+                self.report_period = ReportPeriod::Month;
             }
-            KeyCode::Char('D') => {
-                if self.detail_tab == DetailTab::Report {
-                    self.report_period = ReportPeriod::Day;
-                }
+            KeyCode::Char('w') if self.detail_tab == DetailTab::Report => {
+                self.report_period = ReportPeriod::Week;
+            }
+            KeyCode::Char('D') if self.detail_tab == DetailTab::Report => {
+                self.report_period = ReportPeriod::Day;
             }
             _ => {}
         }

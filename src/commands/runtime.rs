@@ -15,6 +15,12 @@ pub(crate) fn load_config(config_path: Option<&Path>) -> Result<config::Config> 
     }
 }
 
+pub(crate) fn config_save_path(cfg: &config::Config, config_path: Option<&Path>) -> PathBuf {
+    config_path
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| cfg.config_path())
+}
+
 pub(crate) fn new_client(cfg: &config::Config) -> Result<client::Client> {
     let key_path = cfg.key_abs_path()?;
     let key = auth::key::load_private_key(&key_path.to_string_lossy())?;
