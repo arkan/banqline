@@ -124,7 +124,7 @@ impl Client {
         self.do_post("/auth", req).await.context("authorize")
     }
 
-    pub async fn create_session(&self, code: &str) -> Result<Session> {
+    pub async fn create_session(&self, code: &str) -> Result<CreatedSession> {
         let payload = serde_json::json!({ "code": code });
         self.do_post("/sessions", &payload)
             .await
@@ -132,8 +132,21 @@ impl Client {
     }
 
     pub async fn get_session(&self, session_id: &str) -> Result<Session> {
+        #[derive(serde::Deserialize)]
+        struct GetSessionResponse {
+            status: String,
+            #[serde(default)]
+            accounts: Vec<String>,
+        }
+
         let path = format!("/sessions/{}", session_id);
-        self.do_get(&path).await.context("get session")
+        let resp: GetSessionResponse = self.do_get(&path).await.context("get session")?;
+
+        Ok(Session {
+            session_id: session_id.to_string(),
+            status: resp.status,
+            accounts: resp.accounts,
+        })
     }
 
     pub async fn get_account_details(&self, account_id: &str) -> Result<Account> {
@@ -245,6 +258,77 @@ mod tests {
             urls
         });
         (base_url, handle)
+    }
+
+    #[tokio::test]
+    async fn create_session_decodes_authorize_session_response() {
+        let (base_url, handle) = spawn_server(vec![json!({
+            "session_id": "sess-001",
+            "accounts": [{
+                "uid": "acc-001",
+                "account_id": { "iban": "FI0455231152453547" }
+            }],
+            "aspsp": { "name": "Nordea", "country": "FI" },
+            "psu_type": "personal",
+            "access": { "valid_until": "2026-08-31T12:00:00Z" }
+        })]);
+        let client = Client::new(Some(base_url), None);
+
+        let session = client.create_session("auth-code").await.unwrap();
+
+        assert_eq!(session.session_id, "sess-001");
+        let urls = handle.join().unwrap();
+        assert_eq!(urls[0], "/sessions");
+    }
+
+    #[tokio::test]
+    async fn get_session_uses_path_session_id_when_response_omits_it() {
+        let (base_url, handle) = spawn_server(vec![json!({
+            "access": { "valid_until": "2026-08-31T12:00:00Z" },
+            "accounts": ["acc-001"],
+            "accounts_data": [{
+                "identification_hash": "hash",
+                "uid": "acc-001"
+            }],
+            "aspsp": { "name": "Nordea", "country": "FI" },
+            "authorized": "2026-06-02T12:00:00Z",
+            "created": "2026-06-02T12:00:00Z",
+            "psu_type": "personal",
+            "status": "AUTHORIZED"
+        })]);
+        let client = Client::new(Some(base_url), None);
+
+        let session = client.get_session("sess-001").await.unwrap();
+
+        assert_eq!(session.session_id, "sess-001");
+        assert_eq!(session.status, "AUTHORIZED");
+        assert_eq!(session.accounts, vec!["acc-001"]);
+        let urls = handle.join().unwrap();
+        assert_eq!(urls[0], "/sessions/sess-001");
+    }
+
+    #[test]
+    fn account_accepts_null_optional_fields() {
+        let decoded: Account = serde_json::from_value(json!({
+            "uid": "acc-001",
+            "account_id": { "iban": null },
+            "name": null,
+            "details": null,
+            "usage": null,
+            "currency": null,
+            "cash_account_type": null,
+            "psu_status": null
+        }))
+        .unwrap();
+
+        assert_eq!(decoded.uid, "acc-001");
+        assert_eq!(decoded.account_id.iban, "");
+        assert_eq!(decoded.name, "");
+        assert_eq!(decoded.details, "");
+        assert_eq!(decoded.usage, "");
+        assert_eq!(decoded.currency, "");
+        assert_eq!(decoded.cash_account_type, "");
+        assert_eq!(decoded.psu_status, "");
     }
 
     #[tokio::test]
