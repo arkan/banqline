@@ -1,0 +1,4 @@
+interface:
+  display_name: "Banqline CLI Usage"
+  short_description: "Use Banqline CLI workflows correctly"
+  default_prompt: "Use $banqline-cli-usage to diagnose my Banqline workflow and recommend the right CLI commands."
