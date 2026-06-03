@@ -1,6 +1,6 @@
 [package]
 name = "banqline"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
 description = "A terminal-first personal banking CLI and TUI powered by Enable Banking"
 license = "MIT"

@@ -50,7 +50,7 @@ Available targets:
 Example install script:
 
 ```bash
-version="v0.1.0" # replace with the release you want
+version="v0.1.2" # replace with the release you want
 repo="arkan/banqline"
 
 case "$(uname -s)-$(uname -m)" in
