@@ -40,6 +40,11 @@ pub struct AuthResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct CreatedSession {
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Session {
     pub session_id: String,
@@ -49,6 +54,7 @@ pub struct Session {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AccountId {
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub iban: String,
 }
 
@@ -57,11 +63,17 @@ pub struct AccountId {
 pub struct Account {
     pub uid: String,
     pub account_id: AccountId,
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub name: String,
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub details: String,
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub usage: String,
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub currency: String,
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub cash_account_type: String,
+    #[serde(default, deserialize_with = "deserialize_default_on_null")]
     pub psu_status: String,
 }
 
