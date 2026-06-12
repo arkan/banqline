@@ -7,18 +7,12 @@ impl App {
             None => return,
         };
         let txns = self.all_transactions.get(&uid).cloned().unwrap_or_default();
-        let idx = self.txn_cursor;
-        if idx >= txns.len() {
-            return;
-        }
-        let tx = &txns[idx];
-        let desc = if !tx.remittance_info.is_empty() {
-            tx.remittance_info.join(" ")
-        } else if !tx.creditor_name.is_empty() {
-            tx.creditor_name.clone()
-        } else {
-            tx.debtor_name.clone()
-        };
+        let tx =
+            match super::txn_view::selected_transaction(&txns, &self.txn_filter, self.txn_cursor) {
+                Some(tx) => tx,
+                None => return,
+            };
+        let desc = super::txn_view::description_without_note(tx);
         let pattern = desc.split_whitespace().next().unwrap_or("").to_lowercase();
         self.tag = TagState {
             open: true,

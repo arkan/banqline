@@ -240,22 +240,15 @@ pub(crate) async fn fetch_all_transactions(
         .context("fetch transactions")
 }
 
-pub(crate) fn best_transaction_date(t: &store::TransactionRecord) -> &str {
-    if !t.booking_date.is_empty() {
-        &t.booking_date
-    } else if !t.value_date.is_empty() {
-        &t.value_date
-    } else {
-        &t.transaction_date
-    }
-}
-
 pub(crate) fn prepare_transaction_output(
     txns: &mut Vec<store::TransactionRecord>,
     direction: Option<&str>,
     category: Option<&str>,
-    limit: i32,
+    limit: Option<i32>,
 ) {
+    // Exclude pending transactions (they have a dedicated tab in TUI).
+    txns.retain(|t| !t.is_pending());
+
     if let Some(dir) = direction {
         let normalized: String = match dir.to_lowercase().as_str() {
             "credit" | "crdt" => "CRDT".into(),
@@ -270,28 +263,12 @@ pub(crate) fn prepare_transaction_output(
         txns.retain(|t| t.category.to_lowercase() == cat_lower);
     }
 
-    txns.sort_by(|a, b| {
-        let a_key = (
-            best_transaction_date(a),
-            a.booking_date.as_str(),
-            a.value_date.as_str(),
-            a.transaction_date.as_str(),
-            a.transaction_id.as_str(),
-            a.account_uid.as_str(),
-        );
-        let b_key = (
-            best_transaction_date(b),
-            b.booking_date.as_str(),
-            b.value_date.as_str(),
-            b.transaction_date.as_str(),
-            b.transaction_id.as_str(),
-            b.account_uid.as_str(),
-        );
-        b_key.cmp(&a_key)
-    });
+    txns.sort_by(store::compare_transactions_for_display);
 
-    if limit >= 0 {
-        txns.truncate(limit as usize);
+    if let Some(n) = limit {
+        if n > 0 {
+            txns.truncate(n as usize);
+        }
     }
 }
 

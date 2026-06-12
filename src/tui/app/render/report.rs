@@ -9,7 +9,7 @@ impl App {
             .unwrap_or_default();
         let inputs: Vec<SummaryInput> = all
             .iter()
-            .filter(|tx| tx.status != "PDNG")
+            .filter(|tx| !tx.is_pending())
             .map(|tx| SummaryInput {
                 booking_date: tx.booking_date.clone(),
                 amount: tx.amount.clone(),

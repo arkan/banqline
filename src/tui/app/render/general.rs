@@ -78,7 +78,7 @@ impl App {
         let pending: Vec<&store::TransactionRecord> = self
             .all_transactions
             .get(&acct.uid)
-            .map(|t| t.iter().filter(|tx| tx.status == "PDNG").collect())
+            .map(|t| t.iter().filter(|tx| tx.is_pending()).collect())
             .unwrap_or_default();
         if pending.is_empty() {
             f.render_widget(Paragraph::new("No pending transactions."), area);

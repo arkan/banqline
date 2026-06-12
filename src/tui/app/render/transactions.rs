@@ -12,40 +12,7 @@ impl App {
             .get(&acct.uid)
             .cloned()
             .unwrap_or_default();
-        let mut txns: Vec<&store::TransactionRecord> =
-            all.iter().filter(|tx| tx.status != "PDNG").collect();
-        if self.txn_filter.active {
-            if let Some(ref cat) = self.txn_filter.category {
-                txns.retain(|tx| tx.category.eq_ignore_ascii_case(cat));
-            }
-            if let Some(ref dir) = self.txn_filter.direction {
-                txns.retain(|tx| tx.credit_debit_indicator == *dir);
-            }
-        }
-        if !self.txn_filter.search.is_empty() {
-            let q = self.txn_filter.search.to_lowercase();
-            txns.retain(|tx| {
-                let desc = if !tx.remittance_info.is_empty() {
-                    tx.remittance_info.join(" ")
-                } else if !tx.creditor_name.is_empty() {
-                    tx.creditor_name.clone()
-                } else {
-                    tx.debtor_name.clone()
-                };
-                let haystack = format!(
-                    "{} {} {} {} {} {} {} {}",
-                    tx.booking_date,
-                    tx.amount,
-                    tx.currency,
-                    desc,
-                    tx.category,
-                    tx.creditor_name,
-                    tx.debtor_name,
-                    tx.note
-                );
-                haystack.to_lowercase().contains(&q)
-            });
-        }
+        let txns = super::super::txn_view::visible_transactions(&all, &self.txn_filter);
         let inner = area.inner(Margin::new(1, 1));
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -146,7 +113,7 @@ impl App {
             let fixed = format!(
                 "{}{}  {}{:<8} {:<18}",
                 prefix,
-                tx.booking_date,
+                tx.best_date(),
                 sign,
                 amount.round_dp(2),
                 tx.category
@@ -154,7 +121,7 @@ impl App {
             let desc_width = row_width.saturating_sub(fixed.len());
             let desc_display = format!("{:<width$}", desc, width = desc_width);
             lines.push(Line::from(vec![
-                Span::styled(format!("{}{}  ", prefix, tx.booking_date), selection),
+                Span::styled(format!("{}{}  ", prefix, tx.best_date()), selection),
                 Span::styled(
                     format!("{}{:<8} ", sign, amount.round_dp(2)),
                     Style::default().fg(amt_color).patch(selection),

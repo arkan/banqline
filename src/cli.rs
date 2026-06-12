@@ -285,8 +285,8 @@ pub(crate) struct TransactionsArgs {
     pub(crate) from: Option<String>,
     #[arg(long)]
     pub(crate) to: Option<String>,
-    #[arg(long, default_value = "50")]
-    pub(crate) limit: i32,
+    #[arg(long)]
+    pub(crate) limit: Option<i32>,
     #[arg(long)]
     pub(crate) category: Option<String>,
     #[arg(long)]

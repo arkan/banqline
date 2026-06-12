@@ -94,7 +94,7 @@ impl App {
         let pending_count = self
             .all_transactions
             .get(&acct_uid)
-            .map(|t| t.iter().filter(|tx| tx.status == "PDNG").count())
+            .map(|t| t.iter().filter(|tx| tx.is_pending()).count())
             .unwrap_or(0);
         let alert_count = self
             .alert_results

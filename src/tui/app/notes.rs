@@ -7,11 +7,11 @@ impl App {
             None => return,
         };
         let txns = self.all_transactions.get(&uid).cloned().unwrap_or_default();
-        let idx = self.txn_cursor;
-        if idx >= txns.len() {
-            return;
-        }
-        let tx = &txns[idx];
+        let tx =
+            match super::txn_view::selected_transaction(&txns, &self.txn_filter, self.txn_cursor) {
+                Some(tx) => tx,
+                None => return,
+            };
         self.note_open = true;
         self.note_input = tx.note.clone();
         self.note_cursor = tx.note.len();

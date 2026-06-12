@@ -177,6 +177,7 @@ mod notes;
 mod refresh;
 mod render;
 mod tagging;
+mod txn_view;
 
 #[cfg(test)]
 mod tests;

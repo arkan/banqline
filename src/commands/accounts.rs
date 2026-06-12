@@ -216,8 +216,8 @@ pub(crate) async fn cmd_transactions(
 
     let account_uids: Vec<String> = match args.account.as_deref() {
         Some(flag) => {
-            let resolved = resolve_alias(Some(&db), flag).await;
-            vec![resolved]
+            let account = resolve_account(sess, Some(&db), Some(flag)).await?;
+            vec![account.uid.clone()]
         }
         None => sess.accounts.iter().map(|a| a.uid.clone()).collect(),
     };
@@ -308,16 +308,7 @@ pub(crate) async fn cmd_transactions(
                 other => other,
             };
 
-            rows.push(vec![
-                if !t.booking_date.is_empty() {
-                    t.booking_date.clone()
-                } else {
-                    t.transaction_date.clone()
-                },
-                amt,
-                dir.to_string(),
-                desc,
-            ]);
+            rows.push(vec![t.best_date().to_string(), amt, dir.to_string(), desc]);
         }
 
         let footer = format!(

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 /// A locally stored bank account.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -65,6 +66,47 @@ impl Default for TransactionRecord {
             category_source: String::new(),
         }
     }
+}
+
+impl TransactionRecord {
+    /// Check if this transaction has a pending status (case-insensitive).
+    pub fn is_pending(&self) -> bool {
+        self.status.eq_ignore_ascii_case("PDNG")
+    }
+
+    /// Best date for display: booking_date, value_date, or transaction_date (first non-empty).
+    pub fn best_date(&self) -> &str {
+        if !self.booking_date.is_empty() {
+            &self.booking_date
+        } else if !self.value_date.is_empty() {
+            &self.value_date
+        } else {
+            &self.transaction_date
+        }
+    }
+}
+
+/// Compare two transactions using the same display ordering as the CLI output.
+/// Sort is: best_date DESC, booking_date DESC, value_date DESC, transaction_date DESC,
+/// transaction_id DESC, account_uid DESC.
+pub fn compare_transactions_for_display(a: &TransactionRecord, b: &TransactionRecord) -> Ordering {
+    let a_key = (
+        a.best_date(),
+        a.booking_date.as_str(),
+        a.value_date.as_str(),
+        a.transaction_date.as_str(),
+        a.transaction_id.as_str(),
+        a.account_uid.as_str(),
+    );
+    let b_key = (
+        b.best_date(),
+        b.booking_date.as_str(),
+        b.value_date.as_str(),
+        b.transaction_date.as_str(),
+        b.transaction_id.as_str(),
+        b.account_uid.as_str(),
+    );
+    b_key.cmp(&a_key)
 }
 
 /// A category update for a single transaction.
